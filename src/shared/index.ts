@@ -1,0 +1,30 @@
+// Shared UI kit used by all four portals. When splitting into separate sites,
+// copy this folder (or publish it as a package) into each project.
+export * from "./types";
+export * from "./lib/head";
+export * from "./lib/tones";
+export * from "./lib/ticket";
+export * from "./layout/PortalShell";
+export * from "./components/PageHeader";
+export * from "./components/SectionCard";
+export * from "./components/KpiCard";
+export * from "./components/OverviewHero";
+export * from "./components/StatusBadge";
+export * from "./components/DataTable";
+export * from "./components/PillTabs";
+export * from "./components/Progress";
+export * from "./components/Field";
+export * from "./components/IconTile";
+export * from "./components/UserAvatar";
+export * from "./charts/DonutChart";
+export * from "./charts/SegmentRing";
+export * from "./charts/PillBarChart";
+export * from "./charts/AreaTrendChart";
+export * from "./charts/ChartLegend";
+export * from "./lib/chartColors";
+export * from "./api/client";
+export * from "./api/types";
+export * from "./api/data";
+export * from "./api/Actions";
+export { Button, buttonVariants } from "@/components/ui/button";
+export { cn } from "@/lib/utils";
