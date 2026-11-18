@@ -132,7 +132,7 @@ export function Topbar({ config, onToggleSidebar, onOpenMobile }: TopbarProps) {
             )}
             <button
               className="w-full rounded-lg p-2 text-left text-sm text-danger hover:bg-surface"
-              onClick={() => void logout().then(() => window.location.reload())}
+              onClick={() => void logout().then(() => window.location.assign("/"))}
             >
               Đăng xuất
             </button>

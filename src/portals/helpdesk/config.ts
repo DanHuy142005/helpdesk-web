@@ -1,4 +1,11 @@
-import { ArrowRightLeft, Headset, Inbox, KanbanSquare, LayoutDashboard, Wrench } from "lucide-react";
+import {
+  ArrowRightLeft,
+  Headset,
+  Inbox,
+  KanbanSquare,
+  LayoutDashboard,
+  Wrench,
+} from "lucide-react";
 
 import type { PortalConfig } from "@/shared";
 
@@ -12,17 +19,17 @@ export const helpdeskConfig: PortalConfig = {
   searchPlaceholder: "Tìm Ticket, người yêu cầu, mã sự cố...",
   nav: [
     {
-      title: "Tiếp nhận",
+      title: "Công việc",
       items: [
         { label: "Dashboard", to: "/helpdesk", icon: LayoutDashboard, exact: true },
-        { label: "Tiếp nhận Ticket", to: "/helpdesk/queue", icon: Inbox, badge: "12" },
+        { label: "Ticket được giao", to: "/helpdesk/queue", icon: Inbox },
         { label: "Xử lý sự cố", to: "/helpdesk/resolve", icon: Wrench },
       ],
     },
     {
-      title: "Điều phối",
+      title: "Theo dõi",
       items: [
-        { label: "Chuyển Technician", to: "/helpdesk/escalate", icon: ArrowRightLeft },
+        { label: "Lịch sử phân công", to: "/helpdesk/escalate", icon: ArrowRightLeft },
         { label: "Theo dõi công việc", to: "/helpdesk/tracking", icon: KanbanSquare },
       ],
     },

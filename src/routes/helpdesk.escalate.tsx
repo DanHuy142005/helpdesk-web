@@ -4,6 +4,7 @@ import { HelpdeskEscalatePage } from "@/portals/helpdesk/pages/EscalatePage";
 import { pageHead } from "@/shared";
 
 export const Route = createFileRoute("/helpdesk/escalate")({
-  head: () => pageHead("Chuyển Technician · NexDesk Helpdesk", "Chuyển Ticket vượt khả năng cho Technician."),
+  head: () =>
+    pageHead("Lịch sử phân công · NexDesk Helpdesk", "Theo dõi các Ticket được Admin phân công."),
   component: HelpdeskEscalatePage,
 });

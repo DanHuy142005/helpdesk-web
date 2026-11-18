@@ -129,15 +129,15 @@
     var(--cyan) 100%
   );
   --gradient-text: linear-gradient(100deg, var(--primary), var(--primary-glow) 60%, var(--cyan));
-  --gradient-page:
-    radial-gradient(60rem 40rem at 100% -10%, oklch(0.93 0.05 255 / 0.55), transparent 60%),
-    radial-gradient(50rem 30rem at -10% 110%, oklch(0.94 0.05 300 / 0.5), transparent 60%),
-    var(--background);
-  --gradient-hero:
-    radial-gradient(22rem 16rem at 72% 30%, oklch(0.85 0.1 220 / 0.85), transparent 70%),
-    radial-gradient(18rem 14rem at 95% 90%, oklch(0.88 0.08 300 / 0.8), transparent 70%),
-    radial-gradient(20rem 14rem at 0% 100%, oklch(0.86 0.09 290 / 0.75), transparent 70%),
-    linear-gradient(120deg, oklch(0.97 0.02 250), oklch(0.96 0.03 230) 50%, oklch(0.97 0.025 300));
+  /* Only the eight backgrounds supplied in `nền mới/`; other UI keeps its original style. */
+  --gradient-page: url("/backgrounds/01-nen-tong-the-canvas.png");
+  --gradient-hero: url("/backgrounds/02-nen-hero-gradient.png");
+  --background-dashboard: url("/backgrounds/08-nen-banner-dashboard.png");
+  --background-knowledge: url("/backgrounds/09-nen-banner-knowledge.png");
+  --background-kpi-blue: url("/backgrounds/10-nen-card-kpi-blue.png");
+  --background-kpi-violet: url("/backgrounds/11-nen-card-kpi-violet.png");
+  --background-kpi-cyan: url("/backgrounds/12-nen-card-kpi-cyan.png");
+  --background-kpi-rose: url("/backgrounds/13-nen-card-kpi-rose.png");
 
   --shadow-soft-value:
     0 1px 2px oklch(0.4 0.05 275 / 0.04), 0 10px 30px -12px oklch(0.45 0.12 280 / 0.14);
@@ -198,6 +198,10 @@
   }
   body {
     background: var(--gradient-page);
+    background-color: var(--background);
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
     background-attachment: fixed;
     color: var(--color-foreground);
     font-family: var(--font-sans);
@@ -227,7 +231,15 @@
 }
 
 @utility bg-hero {
-  background: var(--gradient-hero);
+  background: var(--gradient-hero) center / cover no-repeat;
+}
+
+@utility bg-dashboard {
+  background: var(--background-dashboard) center / cover no-repeat;
+}
+
+@utility bg-knowledge {
+  background: var(--background-knowledge) center / cover no-repeat;
 }
 
 @utility bg-brand {
@@ -295,4 +307,25 @@
 
 @utility animate-rise {
   animation: rise-in 0.45s ease-out both;
+}
+
+@layer utilities {
+  .card-surface.kpi-background {
+    background-image: var(--background-kpi-violet);
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
+  }
+  .kpi-background[data-kpi-tone="info"],
+  .kpi-background[data-kpi-tone="muted"] {
+    background-image: var(--background-kpi-blue);
+  }
+  .kpi-background[data-kpi-tone="success"],
+  .kpi-background[data-kpi-tone="cyan"] {
+    background-image: var(--background-kpi-cyan);
+  }
+  .kpi-background[data-kpi-tone="warning"],
+  .kpi-background[data-kpi-tone="danger"] {
+    background-image: var(--background-kpi-rose);
+  }
 }

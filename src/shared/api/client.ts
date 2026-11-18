@@ -1,17 +1,26 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { ApiUser, Workspace } from "./types";
+import { ensureTabSession } from "./tab-session";
+export { authenticatedUrl } from "./tab-session";
 let csrfToken = "";
+export interface ApiFieldError {
+  field: string;
+  message: string;
+}
 export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    public fields: ApiFieldError[] = [],
   ) {
     super(message);
   }
 }
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
+  const tab = await ensureTabSession();
+  if (tab) headers.set("X-Nexdesk-Tab", tab);
   if (options.body && !(options.body instanceof FormData))
     headers.set("Content-Type", "application/json");
   if (options.method && options.method !== "GET") headers.set("X-CSRF-Token", csrfToken);
@@ -20,7 +29,13 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
     const body = await response.json().catch(() => ({ error: "Không kết nối được máy chủ." }));
     if (response.status === 401 && !path.startsWith("/auth/") && typeof window !== "undefined")
       window.dispatchEvent(new Event("nexdesk:unauthorized"));
-    throw new ApiError(response.status, body.error || "Yêu cầu thất bại.");
+    const fields = Array.isArray(body.fields)
+      ? body.fields.filter(
+          (field: ApiFieldError) =>
+            typeof field?.field === "string" && typeof field?.message === "string",
+        )
+      : [];
+    throw new ApiError(response.status, body.error || "Yêu cầu thất bại.", fields);
   }
   return response.json() as Promise<T>;
 }
@@ -78,9 +93,10 @@ export function useWrite() {
   };
 }
 export async function downloadReport(from = "", to = "") {
+  const tab = await ensureTabSession();
   const response = await fetch(
     "/api/reports?" + new URLSearchParams({ ...(from ? { from } : {}), ...(to ? { to } : {}) }),
-    { credentials: "same-origin", headers: { Accept: "text/csv" } },
+    { credentials: "same-origin", headers: { Accept: "text/csv", "X-Nexdesk-Tab": tab } },
   );
   if (!response.ok) {
     const data = await response.json();

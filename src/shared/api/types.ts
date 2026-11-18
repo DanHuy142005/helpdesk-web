@@ -5,6 +5,7 @@ export interface ApiUser {
   code: string;
   name: string;
   email: string;
+  phone?: string | null;
   role: Role;
   department_id?: string | null;
   departmentId?: string | null;
@@ -19,6 +20,13 @@ export interface ApiTicket {
   description: string;
   category: string;
   priority: TicketPriority;
+  requested_priority: TicketPriority;
+  requested_category: string;
+  requested_asset_id: string | null;
+  classified_by: string | null;
+  classification_confirmed_at: string | null;
+  closed_automatically: boolean;
+  auto_close_at: string | null;
   status: TicketStatus;
   requester_id: string;
   requester: string;
@@ -26,6 +34,10 @@ export interface ApiTicket {
   department: string | null;
   assignee_id: string | null;
   assignee: string | null;
+  assignee_role: Role | null;
+  assigned_by: string | null;
+  assigned_by_name: string | null;
+  queue_role: "helpdesk" | null;
   asset_id: string | null;
   asset_name: string | null;
   location: string | null;
@@ -108,6 +120,14 @@ export interface ApiComment {
   author: string;
   author_id: string;
 }
+export interface ApiMessage {
+  id: string;
+  body: string;
+  created_at: string;
+  author: string;
+  author_id: string;
+  author_role: Role;
+}
 export interface ApiAttachment {
   id: string;
   name: string;
@@ -116,6 +136,8 @@ export interface ApiAttachment {
 }
 export interface TicketDetail extends ApiTicket {
   comments: ApiComment[];
+  messages: ApiMessage[];
+  can_chat: boolean;
   events: ApiEvent[];
   attachments: ApiAttachment[];
 }
@@ -147,3 +169,9 @@ export interface Workspace {
   serverTime: string;
 }
 export type Entity = "users" | "departments" | "assets" | "software" | "documents";
+export interface TicketPolicy {
+  autoCloseEnabled: boolean;
+  autoCloseMinutes: number;
+  version: number;
+  updatedAt: string;
+}

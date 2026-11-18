@@ -40,7 +40,9 @@ export function usePortalData(range?: { from: string; to: string }) {
     ...t,
     requester: t.requester || "—",
     department: t.department || "—",
-    assignee: t.assignee || "Chưa phân công",
+    assignee:
+      t.assignee ||
+      (t.queue_role === "helpdesk" ? "Chờ Admin phân công Helpdesk" : "Chờ Admin phân công"),
     createdAt: format(t.created_at),
     updatedAt: new Date(t.updated_at).toLocaleString("vi-VN"),
     progress: {
@@ -151,7 +153,9 @@ export function usePortalData(range?: { from: string; to: string }) {
         ),
       ),
       from:
-        w.events.find((e) => e.ticket_id === t.id && e.action === "escalate")?.actor || "Helpdesk",
+        t.assigned_by_name ||
+        w.events.find((e) => e.ticket_id === t.id && e.action === "assign")?.actor ||
+        "Phân công trước cập nhật",
     }));
   const results = tickets
     .filter((t) => completed(t.status))
@@ -173,6 +177,8 @@ export function usePortalData(range?: { from: string; to: string }) {
   const stats = {
     total: tickets.length,
     new: tickets.filter((t) => t.status === "Mới").length,
+    unassigned: tickets.filter((t) => !t.assignee_id && !completed(t.status)).length,
+    pendingHelpdesk: tickets.filter((t) => !t.assignee_id && t.queue_role === "helpdesk").length,
     active: tickets.filter((t) => !completed(t.status)).length,
     processing: tickets.filter((t) => t.status === "Đang xử lý").length,
     waiting: tickets.filter((t) => t.status === "Chờ phản hồi").length,
@@ -326,6 +332,9 @@ export function usePortalData(range?: { from: string; to: string }) {
         time: time(e.created_at),
         status: e.to_status,
       })),
+    assignments: w.events.filter((event) =>
+      ["assign", "return-to-helpdesk"].includes(event.action),
+    ),
     jobs,
     results,
     devices: assets,
@@ -333,6 +342,7 @@ export function usePortalData(range?: { from: string; to: string }) {
     schedule: jobs
       .filter((j) => new Date(j.due_at).toDateString() === now.toDateString())
       .map((j) => ({
+        id: j.id,
         time: time(j.due_at),
         title: j.title,
         place: j.location,
@@ -350,6 +360,7 @@ export function usePortalData(range?: { from: string; to: string }) {
     myCategories: group("category"),
     categories,
     announcements: w.notifications.map((n) => ({
+      id: n.id,
       title: n.message,
       text: new Date(n.created_at).toLocaleString("vi-VN"),
       tone: "info" as const,
@@ -361,6 +372,7 @@ export function usePortalData(range?: { from: string; to: string }) {
           .filter((e) => e.ticket_id === t.id)
           .reverse()
           .map((e, i, all) => ({
+            id: e.id,
             label: e.to_status,
             time: new Date(e.created_at).toLocaleString("vi-VN"),
             by: e.actor,

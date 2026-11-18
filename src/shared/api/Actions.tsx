@@ -9,11 +9,31 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { api, useWorkspace, useWrite, downloadReport, logout } from "./client";
-import type { Entity, TicketDetail, ApiAttachment, ApiDocument } from "./types";
-import { StatusBadge, PriorityBadge } from "../components/StatusBadge";
+import {
+  api,
+  ApiError,
+  useWorkspace,
+  useWrite,
+  downloadReport,
+  authenticatedUrl,
+  logout,
+  type ApiFieldError,
+} from "./client";
+import type { Entity, ApiAttachment, ApiDocument } from "./types";
 import { Field } from "../components/Field";
+import { TicketDetailPanel as TicketPanel } from "../components/TicketDetailPanel";
 import { categories } from "./data";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogAction,
+} from "@/components/ui/alert-dialog";
+import { CheckCircle2 } from "lucide-react";
+import { isOverdue } from "../components/TicketSla";
 
 type Panel = {
   type:
@@ -26,7 +46,8 @@ type Panel = {
     | "audit"
     | "new-ticket"
     | "report"
-    | "password";
+    | "password"
+    | "overdue";
   id?: string;
   entity?: Entity;
   query?: string;
@@ -38,6 +59,7 @@ interface Actions {
   openPanel: (panel: Panel) => void;
   newTicket: () => void;
   exportReport: () => void;
+  notify: (title: string, description?: string) => void;
   from: string;
   to: string;
 }
@@ -49,6 +71,7 @@ export function useActions() {
 }
 export function ActionsProvider({ children }: { children: ReactNode }) {
   const [panel, setPanel] = useState<Panel | null>(null),
+    [notice, setNotice] = useState<{ title: string; description: string | undefined } | null>(null),
     [from, setFrom] = useState(""),
     [to, setTo] = useState("");
   const actions: Actions = {
@@ -57,6 +80,10 @@ export function ActionsProvider({ children }: { children: ReactNode }) {
     editEntity: (entity, id) => setPanel({ type: "entity", entity, ...(id ? { id } : {}) }),
     openPanel: setPanel,
     newTicket: () => setPanel({ type: "new-ticket" }),
+    notify: (title, description) => {
+      setPanel(null);
+      setNotice({ title, description });
+    },
     exportReport: () => {
       void downloadReport(from, to).catch((e) => toast.error(e.message));
     },
@@ -93,7 +120,9 @@ export function ActionsProvider({ children }: { children: ReactNode }) {
                               ? "Lịch sử thao tác"
                               : panel?.type === "calendar"
                                 ? "Lịch xử lý"
-                                : "Thông báo"}
+                                : panel?.type === "overdue"
+                                  ? "Ticket quá hạn SLA"
+                                  : "Thông báo"}
             </DialogTitle>
             <DialogDescription>
               Dữ liệu được đồng bộ giữa các cổng theo quyền truy cập của bạn.
@@ -142,11 +171,31 @@ export function ActionsProvider({ children }: { children: ReactNode }) {
             </form>
           )}
           {panel?.type === "password" && <PasswordForm />}
-          {panel && ["search", "notifications", "calendar", "audit"].includes(panel.type) && (
-            <UtilityPanel panel={panel} />
-          )}
+          {panel &&
+            ["search", "notifications", "calendar", "audit", "overdue"].includes(panel.type) && (
+              <UtilityPanel panel={panel} />
+            )}
         </DialogContent>
       </Dialog>
+      <AlertDialog
+        open={!!notice}
+        onOpenChange={(open) => {
+          if (!open) setNotice(null);
+        }}
+      >
+        <AlertDialogContent className="w-[calc(100%-2rem)] rounded-[20px] text-center sm:max-w-md">
+          <CheckCircle2 className="mx-auto size-12 text-success" />
+          <AlertDialogHeader className="sm:text-center">
+            <AlertDialogTitle>{notice?.title}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {notice?.description || "Thông tin đã được cập nhật thành công."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="sm:justify-center">
+            <AlertDialogAction>Đã hiểu</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Context.Provider>
   );
 }
@@ -157,7 +206,7 @@ export function FileList({ files }: { files: ApiAttachment[] }) {
         <li key={f.id}>
           <a
             className="text-sm font-semibold text-primary underline"
-            href={"/api/attachments/" + f.id}
+            href={authenticatedUrl("/attachments/" + f.id)}
           >
             {f.name} ({Math.ceil(f.size / 1024)} KB)
           </a>
@@ -199,275 +248,6 @@ export function FileUpload({ entity, id }: { entity: "tickets" | "documents"; id
     </label>
   );
 }
-function TicketPanel({ id }: { id: string }) {
-  const { data: workspace } = useWorkspace(),
-    write = useWrite();
-  const query = useQuery({
-    queryKey: ["ticket", id],
-    queryFn: () => api<TicketDetail>("/tickets/" + encodeURIComponent(id)),
-    refetchInterval: 3000,
-  });
-  const [note, setNote] = useState(""),
-    [comment, setComment] = useState(""),
-    [internal, setInternal] = useState(false),
-    [tech, setTech] = useState(""),
-    [pending, setPending] = useState(false);
-  if (query.error)
-    return (
-      <p role="alert" className="text-danger">
-        {query.error.message}
-      </p>
-    );
-  const t = query.data;
-  if (!t || !workspace) return <p>Đang tải…</p>;
-  const user = workspace.user,
-    owner = t.assignee_id === user.id;
-  async function act(action: string) {
-    setPending(true);
-    try {
-      await write("/tickets/" + id + "/actions", {
-        action,
-        version: t!.version,
-        note,
-        ...(tech ? { assigneeId: tech } : {}),
-      });
-      setNote("");
-      toast.success("Đã cập nhật Ticket.");
-    } catch {
-    } finally {
-      setPending(false);
-    }
-  }
-  return (
-    <div className="space-y-5">
-      <div>
-        <h2 className="text-xl font-bold">{t.title}</h2>
-        <div className="my-3 flex flex-wrap gap-2">
-          <StatusBadge status={t.status} />
-          <PriorityBadge priority={t.priority} />
-          <span className="text-sm text-muted-foreground">{t.category}</span>
-        </div>
-        <p className="whitespace-pre-wrap rounded-xl bg-surface p-4 text-sm">{t.description}</p>
-        <p className="mt-3 text-sm text-muted-foreground">
-          {t.requester} · {t.department} · Phụ trách: {t.assignee || "Chưa phân công"} · Thiết bị:{" "}
-          {t.asset_id || "Không có"}
-        </p>
-      </div>
-      {t.solution && (
-        <div className="rounded-xl border border-success/30 bg-success/10 p-4">
-          <h3 className="font-bold">Kết quả xử lý</h3>
-          <p className="mt-2 whitespace-pre-wrap text-sm">{t.solution}</p>
-        </div>
-      )}
-      {t.status !== "Đã đóng" && (
-        <section className="space-y-3 rounded-xl border p-4">
-          <Field label="Ghi chú / kết quả / lý do chuyển">
-            <textarea
-              className="field h-auto py-3"
-              rows={3}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              maxLength={10000}
-            />
-          </Field>
-          {user.role === "helpdesk" && owner && (
-            <Field label="Technician nhận chuyển">
-              <select className="field" value={tech} onChange={(e) => setTech(e.target.value)}>
-                <option value="">Chọn Technician</option>
-                {workspace.users
-                  .filter((u) => u.role === "technician" && u.active)
-                  .map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-              </select>
-            </Field>
-          )}
-          <div className="flex flex-wrap gap-2">
-            {user.role === "helpdesk" && t.status === "Mới" && (
-              <Button disabled={pending} variant="brand" onClick={() => void act("accept")}>
-                Tiếp nhận
-              </Button>
-            )}
-            {user.role === "technician" && owner && t.status === "Đã chuyển" && (
-              <Button disabled={pending} variant="brand" onClick={() => void act("start")}>
-                Bắt đầu xử lý
-              </Button>
-            )}
-            {["helpdesk", "technician"].includes(user.role) &&
-              owner &&
-              t.status === "Đang xử lý" && (
-                <Button disabled={pending} variant="outline" onClick={() => void act("wait")}>
-                  Chờ phản hồi
-                </Button>
-              )}
-            {["helpdesk", "technician"].includes(user.role) &&
-              owner &&
-              t.status === "Chờ phản hồi" && (
-                <Button disabled={pending} variant="outline" onClick={() => void act("resume")}>
-                  Tiếp tục xử lý
-                </Button>
-              )}
-            {["helpdesk", "technician"].includes(user.role) &&
-              owner &&
-              ["Đang xử lý", "Chờ phản hồi"].includes(t.status) && (
-                <Button disabled={pending} variant="brand" onClick={() => void act("resolve")}>
-                  Ghi kết quả giải quyết
-                </Button>
-              )}
-            {user.role === "helpdesk" &&
-              owner &&
-              ["Đang xử lý", "Chờ phản hồi"].includes(t.status) && (
-                <Button
-                  disabled={pending || !tech}
-                  variant="soft"
-                  onClick={() => void act("escalate")}
-                >
-                  Chuyển Technician
-                </Button>
-              )}
-            {t.requester_id === user.id && t.status === "Đã giải quyết" && (
-              <>
-                <Button disabled={pending} variant="brand" onClick={() => void act("confirm")}>
-                  Xác nhận đóng Ticket
-                </Button>
-                <Button disabled={pending} variant="outline" onClick={() => void act("reopen")}>
-                  Yêu cầu xử lý tiếp
-                </Button>
-              </>
-            )}
-          </div>
-        </section>
-      )}
-      {user.role === "helpdesk" && ["Mới", "Đang xử lý", "Chờ phản hồi"].includes(t.status) && (
-        <form
-          className="grid gap-3 rounded-xl border p-4 sm:grid-cols-3"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            const data = new FormData(e.currentTarget);
-            try {
-              await write("/tickets/" + id + "/actions", {
-                action: "classify",
-                version: t.version,
-                priority: data.get("priority"),
-                category: data.get("category"),
-                assetId: data.get("assetId") || null,
-              });
-              toast.success("Đã phân loại.");
-            } catch {}
-          }}
-        >
-          <select
-            aria-label="Mức ưu tiên"
-            name="priority"
-            className="field"
-            defaultValue={t.priority}
-          >
-            {["Khẩn cấp", "Cao", "Trung bình", "Thấp"].map((p) => (
-              <option key={p}>{p}</option>
-            ))}
-          </select>
-          <select
-            aria-label="Loại yêu cầu"
-            name="category"
-            className="field"
-            defaultValue={t.category}
-          >
-            {categories.map((c) => (
-              <option key={c}>{c}</option>
-            ))}
-          </select>
-          <select
-            aria-label="Thiết bị liên quan"
-            name="assetId"
-            className="field"
-            defaultValue={t.asset_id || ""}
-          >
-            <option value="">Không có thiết bị</option>
-            {workspace.assets
-              .filter((a) => a.owner_id === t.requester_id)
-              .map((a) => (
-                <option key={a.id}>{a.id}</option>
-              ))}
-          </select>
-          <Button variant="outline">Lưu phân loại</Button>
-        </form>
-      )}
-      <section>
-        <h3 className="mb-3 font-bold">Trao đổi & ghi chú</h3>
-        <ul className="space-y-2">
-          {t.comments.map((c) => (
-            <li key={c.id} className="rounded-xl bg-surface p-3 text-sm">
-              <b>{c.author}</b>
-              <span className="ml-2 text-xs text-muted-foreground">
-                {new Date(c.created_at).toLocaleString("vi-VN")}
-                {c.internal ? " · Nội bộ" : ""}
-              </span>
-              <p className="mt-1 whitespace-pre-wrap">{c.body}</p>
-            </li>
-          ))}
-        </ul>
-        {t.status !== "Đã đóng" && (
-          <form
-            className="mt-3 space-y-2"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              setPending(true);
-              try {
-                await write("/tickets/" + id + "/comments", { body: comment, internal });
-                setComment("");
-                toast.success("Đã gửi phản hồi.");
-              } catch {
-              } finally {
-                setPending(false);
-              }
-            }}
-          >
-            <textarea
-              aria-label="Nội dung phản hồi"
-              required
-              className="field h-auto py-3"
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              maxLength={10000}
-            />
-            {user.role !== "end-user" && (
-              <label className="flex gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={internal}
-                  onChange={(e) => setInternal(e.target.checked)}
-                />
-                Ghi chú nội bộ (ẩn với End User)
-              </label>
-            )}
-            <Button disabled={pending} variant="brand">
-              Gửi phản hồi
-            </Button>
-          </form>
-        )}
-      </section>
-      <FileList files={t.attachments} />
-      {t.status !== "Đã đóng" && <FileUpload entity="tickets" id={id} />}
-      <section>
-        <h3 className="mb-3 font-bold">Lịch sử xử lý</h3>
-        <ol className="space-y-2 border-l pl-4">
-          {t.events.map((event) => (
-            <li key={event.id} className="text-sm">
-              <b>{event.to_status}</b> · {event.actor}
-              <span className="ml-2 text-xs text-muted-foreground">
-                {new Date(event.created_at).toLocaleString("vi-VN")}
-              </span>
-              <p className="whitespace-pre-wrap text-muted-foreground">{event.note}</p>
-            </li>
-          ))}
-        </ol>
-      </section>
-    </div>
-  );
-}
-
 type FormField = {
   key: string;
   label: string;
@@ -489,6 +269,8 @@ function EntityForm({
   const [pending, setPending] = useState(false);
   const [history, setHistory] = useState<Record<string, unknown>[] | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<ApiFieldError[]>([]);
+  const [formError, setFormError] = useState("");
   if (!w) return null;
   const rows =
     entity === "users"
@@ -507,6 +289,7 @@ function EntityForm({
       { key: "code", label: "Mã nhân viên" },
       { key: "name", label: "Họ tên" },
       { key: "email", label: "Email", type: "email" },
+      { key: "phone", label: "Số điện thoại liên kết", type: "tel", optional: true },
       {
         key: "role",
         label: "Vai trò",
@@ -523,7 +306,7 @@ function EntityForm({
       { key: "position", label: "Chức vụ" },
       {
         key: "password",
-        label: id ? "Mật khẩu mới (để trống nếu giữ nguyên)" : "Mật khẩu (ít nhất 12 ký tự)",
+        label: id ? "Mật khẩu mới (để trống nếu giữ nguyên)" : "Mật khẩu (ít nhất 7 ký tự)",
         type: "password",
         optional: !!id,
       },
@@ -631,6 +414,8 @@ function EntityForm({
             body["visibility"] = "internal";
           }
           setPending(true);
+          setFieldErrors([]);
+          setFormError("");
           try {
             const saved = await write<{ id: string }>(
               "/" + entity + (id ? "/" + encodeURIComponent(id) : ""),
@@ -648,7 +433,9 @@ function EntityForm({
             }
             toast.success("Đã lưu dữ liệu.");
             close();
-          } catch {
+          } catch (error) {
+            if (error instanceof ApiError) setFieldErrors(error.fields);
+            setFormError(error instanceof Error ? error.message : "Chưa lưu được thông tin.");
           } finally {
             setPending(false);
           }
@@ -674,7 +461,15 @@ function EntityForm({
                 {f.label}
               </label>
             ) : (
-              <Field key={f.key} label={f.label}>
+              <Field
+                key={f.key}
+                label={f.label}
+                {...(f.key === "phone"
+                  ? {
+                      hint: "Ví dụ: 0901234567 hoặc +84901234567. Có thể nhập khoảng trắng hoặc dấu gạch ngang.",
+                    }
+                  : {})}
+              >
                 {f.options ? (
                   <select
                     name={f.key}
@@ -704,8 +499,14 @@ function EntityForm({
                     readOnly={!!id && f.key === "id"}
                     min={f.type === "number" ? (f.key === "health" ? 0 : 1) : undefined}
                     max={f.key === "health" ? 100 : undefined}
-                    minLength={f.type === "password" ? 12 : undefined}
-                    autoComplete={f.type === "password" ? "new-password" : undefined}
+                    minLength={f.type === "password" ? 7 : undefined}
+                    autoComplete={
+                      f.type === "password" ? "new-password" : f.key === "phone" ? "tel" : undefined
+                    }
+                    inputMode={f.key === "phone" ? "tel" : undefined}
+                    placeholder={f.key === "phone" ? "0901234567" : undefined}
+                    maxLength={f.key === "phone" ? 40 : undefined}
+                    aria-invalid={fieldErrors.some((error) => error.field === f.key) || undefined}
                     defaultValue={
                       f.type === "password"
                         ? ""
@@ -734,6 +535,29 @@ function EntityForm({
               }}
             />
           </Field>
+        )}
+        {formError && (
+          <div
+            role="alert"
+            className="rounded-xl border border-danger/20 bg-danger/5 p-3 text-sm text-danger"
+          >
+            {fieldErrors.length ? (
+              <ul className="space-y-1">
+                {fieldErrors.map((error, index) => (
+                  <li key={index}>
+                    <b>
+                      {fields[entity].find((field) => field.key === error.field)?.label ||
+                        "Thông tin"}
+                      :
+                    </b>{" "}
+                    {error.message}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              formError
+            )}
+          </div>
         )}
         <div className="flex flex-wrap gap-2">
           <Button variant="brand" disabled={pending}>
@@ -1011,11 +835,12 @@ function NewTicketForm({ close }: { close: () => void }) {
           ))}
         </select>
       </Field>
-      {w && ["admin", "helpdesk"].includes(w.user.role) && (
+      {w && w.user.role === "admin" && (
         <Field label="Người yêu cầu">
-          <select name="requesterId" className="field">
+          <select name="requesterId" className="field" required defaultValue="">
+            <option value="">Chọn End User cần hỗ trợ</option>
             {w.users
-              .filter((u) => u.active)
+              .filter((u) => u.active && u.role === "end-user")
               .map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.name}
@@ -1042,8 +867,9 @@ function PasswordForm() {
           await write("/auth/password", {
             currentPassword: f.get("current"),
             password: f.get("password"),
+            confirmPassword: f.get("confirmPassword"),
           });
-          window.location.reload();
+          window.location.assign("/");
         } catch {}
       }}
     >
@@ -1056,13 +882,24 @@ function PasswordForm() {
           className="field"
         />
       </Field>
-      <Field label="Mật khẩu mới (ít nhất 12 ký tự)">
+      <Field label="Mật khẩu mới (ít nhất 7 ký tự)">
         <input
           required
-          minLength={12}
+          minLength={7}
           maxLength={128}
           type="password"
           name="password"
+          autoComplete="new-password"
+          className="field"
+        />
+      </Field>
+      <Field label="Nhập lại mật khẩu mới">
+        <input
+          required
+          minLength={7}
+          maxLength={128}
+          type="password"
+          name="confirmPassword"
           autoComplete="new-password"
           className="field"
         />
@@ -1118,6 +955,30 @@ function UtilityPanel({ panel }: { panel: Panel }) {
             </span>
           </button>
         ))}
+      </div>
+    );
+  if (panel.type === "overdue")
+    return (
+      <div className="space-y-3">
+        {w.tickets
+          .filter((ticket) => isOverdue(ticket, w.serverTime))
+          .map((ticket) => (
+            <button
+              key={ticket.id}
+              className="block w-full rounded-xl border border-danger/20 bg-danger/5 p-3 text-left text-sm"
+              onClick={() => actions.openTicket(ticket.id)}
+            >
+              <b>
+                {ticket.id} · {ticket.title}
+              </b>
+              <span className="mt-1 block text-xs text-danger">
+                {ticket.priority} · Hạn xử lý: {new Date(ticket.due_at).toLocaleString("vi-VN")}
+              </span>
+            </button>
+          ))}
+        {!w.tickets.some((ticket) => isOverdue(ticket, w.serverTime)) && (
+          <p>Không có Ticket quá hạn SLA.</p>
+        )}
       </div>
     );
   if (panel.type === "calendar")

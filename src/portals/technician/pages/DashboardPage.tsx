@@ -87,7 +87,7 @@ export function TechnicianDashboardPage() {
         <SectionCard title="Lịch hôm nay" className="xl:col-span-4">
           <ol className="space-y-3">
             {schedule.map((s) => (
-              <li key={s.time} className="flex gap-3 rounded-xl border border-border/70 p-3">
+              <li key={s.id} className="flex gap-3 rounded-xl border border-border/70 p-3">
                 <div className="w-12 shrink-0 text-center">
                   <p className="font-display text-sm font-bold">{s.time}</p>
                   <span

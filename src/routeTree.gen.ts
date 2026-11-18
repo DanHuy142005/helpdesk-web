@@ -20,6 +20,7 @@ import { Route as AdminDepartmentsRouteImport } from './routes/admin.departments
 import { Route as AdminDocumentsRouteImport } from './routes/admin.documents'
 import { Route as AdminEmployeesRouteImport } from './routes/admin.employees'
 import { Route as AdminReportsRouteImport } from './routes/admin.reports'
+import { Route as AdminSlaRouteImport } from './routes/admin.sla'
 import { Route as AdminSoftwareRouteImport } from './routes/admin.software'
 import { Route as AdminTicketsRouteImport } from './routes/admin.tickets'
 import { Route as EndUserIndexRouteImport } from './routes/end-user.index'
@@ -92,6 +93,11 @@ const AdminEmployeesRoute = AdminEmployeesRouteImport.update({
 const AdminReportsRoute = AdminReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminSlaRoute = AdminSlaRouteImport.update({
+  id: '/sla',
+  path: '/sla',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminSoftwareRoute = AdminSoftwareRouteImport.update({
@@ -196,6 +202,7 @@ export interface FileRoutesByFullPath {
   '/admin/documents': typeof AdminDocumentsRoute
   '/admin/employees': typeof AdminEmployeesRoute
   '/admin/reports': typeof AdminReportsRoute
+  '/admin/sla': typeof AdminSlaRoute
   '/admin/software': typeof AdminSoftwareRoute
   '/admin/tickets': typeof AdminTicketsRoute
   '/end-user/feedback': typeof EndUserFeedbackRoute
@@ -223,6 +230,7 @@ export interface FileRoutesByTo {
   '/admin/documents': typeof AdminDocumentsRoute
   '/admin/employees': typeof AdminEmployeesRoute
   '/admin/reports': typeof AdminReportsRoute
+  '/admin/sla': typeof AdminSlaRoute
   '/admin/software': typeof AdminSoftwareRoute
   '/admin/tickets': typeof AdminTicketsRoute
   '/end-user/feedback': typeof EndUserFeedbackRoute
@@ -255,6 +263,7 @@ export interface FileRoutesById {
   '/admin/documents': typeof AdminDocumentsRoute
   '/admin/employees': typeof AdminEmployeesRoute
   '/admin/reports': typeof AdminReportsRoute
+  '/admin/sla': typeof AdminSlaRoute
   '/admin/software': typeof AdminSoftwareRoute
   '/admin/tickets': typeof AdminTicketsRoute
   '/end-user/feedback': typeof EndUserFeedbackRoute
@@ -288,6 +297,7 @@ export interface FileRouteTypes {
     | '/admin/documents'
     | '/admin/employees'
     | '/admin/reports'
+    | '/admin/sla'
     | '/admin/software'
     | '/admin/tickets'
     | '/end-user/feedback'
@@ -315,6 +325,7 @@ export interface FileRouteTypes {
     | '/admin/documents'
     | '/admin/employees'
     | '/admin/reports'
+    | '/admin/sla'
     | '/admin/software'
     | '/admin/tickets'
     | '/end-user/feedback'
@@ -346,6 +357,7 @@ export interface FileRouteTypes {
     | '/admin/documents'
     | '/admin/employees'
     | '/admin/reports'
+    | '/admin/sla'
     | '/admin/software'
     | '/admin/tickets'
     | '/end-user/feedback'
@@ -452,6 +464,13 @@ declare module '@tanstack/react-router' {
       path: '/reports'
       fullPath: '/admin/reports'
       preLoaderRoute: typeof AdminReportsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/sla': {
+      id: '/admin/sla'
+      path: '/sla'
+      fullPath: '/admin/sla'
+      preLoaderRoute: typeof AdminSlaRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/software': {
@@ -589,6 +608,7 @@ interface AdminRouteChildren {
   AdminDocumentsRoute: typeof AdminDocumentsRoute
   AdminEmployeesRoute: typeof AdminEmployeesRoute
   AdminReportsRoute: typeof AdminReportsRoute
+  AdminSlaRoute: typeof AdminSlaRoute
   AdminSoftwareRoute: typeof AdminSoftwareRoute
   AdminTicketsRoute: typeof AdminTicketsRoute
   AdminIndexRoute: typeof AdminIndexRoute
@@ -600,6 +620,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminDocumentsRoute: AdminDocumentsRoute,
   AdminEmployeesRoute: AdminEmployeesRoute,
   AdminReportsRoute: AdminReportsRoute,
+  AdminSlaRoute: AdminSlaRoute,
   AdminSoftwareRoute: AdminSoftwareRoute,
   AdminTicketsRoute: AdminTicketsRoute,
   AdminIndexRoute: AdminIndexRoute,

@@ -1,8 +1,9 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ShieldCheck, LogIn } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { login, useAuth, useWorkspace } from "./client";
+import { useAuth, useWorkspace } from "./client";
+import { LoginForm } from "../pages/LoginPage";
 import type { Role } from "./types";
 import { ActionsProvider } from "./Actions";
 
@@ -53,79 +54,5 @@ function Loading() {
     <div className="grid min-h-screen place-items-center text-sm text-muted-foreground">
       Đang tải hệ thống…
     </div>
-  );
-}
-export function LoginForm() {
-  const client = useQueryClient();
-  const [error, setError] = useState(""),
-    [pending, setPending] = useState(false);
-  return (
-    <main className="portal-admin grid min-h-screen place-items-center bg-hero px-4">
-      <section className="card-surface w-full max-w-md p-8 shadow-card">
-        <div className="mb-7 flex items-center gap-3">
-          <span className="grid size-12 place-items-center rounded-2xl bg-brand text-white">
-            <ShieldCheck />
-          </span>
-          <div>
-            <h1 className="font-display text-2xl font-bold">NexDesk</h1>
-            <p className="text-sm text-muted-foreground">IT Helpdesk doanh nghiệp</p>
-          </div>
-        </div>
-        <h2 className="mb-5 text-xl font-bold">Đăng nhập</h2>
-        <form
-          className="space-y-4"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            const form = new FormData(e.currentTarget);
-            setPending(true);
-            setError("");
-            try {
-              const result = await login(String(form.get("email")), String(form.get("password")));
-              client.clear();
-              client.setQueryData(["auth"], result);
-              window.location.assign("/" + result.user.role);
-            } catch (err) {
-              setError(err instanceof Error ? err.message : "Đăng nhập thất bại.");
-            } finally {
-              setPending(false);
-            }
-          }}
-        >
-          <label className="block text-sm font-semibold">
-            Email
-            <input
-              name="email"
-              type="email"
-              autoComplete="username"
-              required
-              className="field mt-2"
-            />
-          </label>
-          <label className="block text-sm font-semibold">
-            Mật khẩu
-            <input
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              maxLength={128}
-              className="field mt-2"
-            />
-          </label>
-          {error && (
-            <p role="alert" className="text-sm text-danger">
-              {error}
-            </p>
-          )}
-          <Button type="submit" variant="brand" className="w-full" disabled={pending}>
-            <LogIn />
-            {pending ? "Đang đăng nhập…" : "Đăng nhập"}
-          </Button>
-        </form>
-        <a href="/" className="mt-5 block text-center text-sm text-primary">
-          Danh sách cổng làm việc
-        </a>
-      </section>
-    </main>
   );
 }

@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { ArrowUpRight, ChevronDown, LayoutGrid } from "lucide-react";
+import { ArrowUpRight, ChevronDown } from "lucide-react";
 import { useState } from "react";
 
 import { cn } from "@/lib/utils";
@@ -83,19 +83,6 @@ export function Sidebar({ config, collapsed = false, onNavigate }: SidebarProps)
           </Link>
         </div>
       )}
-
-      <Link
-        to="/"
-        onClick={onNavigate}
-        title="Danh sách cổng làm việc"
-        className={cn(
-          "mt-3 flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-surface hover:text-foreground",
-          collapsed && "justify-center px-0",
-        )}
-      >
-        <LayoutGrid className="size-4" />
-        {!collapsed && "Danh sách cổng làm việc"}
-      </Link>
     </div>
   );
 }

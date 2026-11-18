@@ -35,6 +35,7 @@ export const publicUser = (row) => ({
   code: row.code,
   name: row.name,
   email: row.email,
+  phone: row.phone || null,
   role: row.role,
   departmentId: row.department_id,
   position: row.position,
@@ -49,7 +50,7 @@ export async function audit(client, actor, action, entity, entityId, details = {
 export function ticketScope(user, alias = "t", offset = 1) {
   if (user.role === "end-user")
     return { sql: `${alias}.requester_id = $${offset}`, values: [user.id] };
-  if (user.role === "technician")
+  if (["helpdesk", "technician"].includes(user.role))
     return { sql: `${alias}.assignee_id = $${offset}`, values: [user.id] };
   return { sql: "TRUE", values: [] };
 }
@@ -64,8 +65,17 @@ export async function getTicket(client, user, id, lock = false) {
 }
 export async function assertAssetAccess(client, user, id) {
   const { rows } = await client.query(
-    `SELECT a.id FROM assets a WHERE a.id=$1 AND ($2::text <> 'end-user' OR EXISTS(SELECT 1 FROM asset_assignments aa WHERE aa.asset_id=a.id AND aa.user_id=$3 AND aa.ended_at IS NULL))`,
+    `SELECT a.id FROM assets a WHERE a.id=$1 AND ($2::text = 'admin'
+      OR EXISTS(SELECT 1 FROM asset_assignments aa WHERE aa.asset_id=a.id AND aa.user_id=$3 AND aa.ended_at IS NULL)
+      OR ($2::text IN ('helpdesk','technician') AND EXISTS(SELECT 1 FROM tickets t WHERE t.asset_id=a.id AND t.assignee_id=$3)))`,
     [id, user.role, user.id],
   );
   assert(rows.length, 403, "Thiết bị không thuộc phạm vi truy cập.");
+}
+
+export function canReadConversation(user, ticket) {
+  return (
+    (user.role === "end-user" && ticket.requester_id === user.id) ||
+    (["helpdesk", "technician"].includes(user.role) && ticket.assignee_id === user.id)
+  );
 }

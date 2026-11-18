@@ -1,31 +1,13 @@
 import express from "express";
 import helmet from "helmet";
-import { rateLimit } from "express-rate-limit";
 import { z, ZodError } from "zod";
-import {
-  tokenHash,
-  newToken,
-  checkPassword,
-  hashPassword,
-  publicUser,
-  assert,
-  HttpError,
-  audit,
-} from "./security.mjs";
-import { transaction } from "./db.mjs";
+import { assert, HttpError } from "./security.mjs";
+import { mountAuthentication } from "./auth.mjs";
 import { ticketRouter } from "./tickets.mjs";
 import { resourceRouter } from "./resources.mjs";
 import { workspace } from "./workspace.mjs";
+import { ticketPolicyRouter } from "./ticket-policy.mjs";
 
-const cookieName = "nexdesk_session";
-const cookieOptions = {
-  httpOnly: true,
-  sameSite: "strict",
-  secure: process.env.NODE_ENV === "production",
-  path: "/api",
-  maxAge: 8 * 60 * 60 * 1000,
-};
-const dummyHash = hashPassword(newToken());
 export function createApp(
   pool,
   {
@@ -53,105 +35,8 @@ export function createApp(
     await pool.query("SELECT 1");
     res.json({ ok: true, service: "nexdesk-api" });
   });
-  app.post(
-    "/api/auth/login",
-    rateLimit({
-      windowMs: 15 * 60 * 1000,
-      limit: 30,
-      standardHeaders: "draft-8",
-      legacyHeaders: false,
-      message: { error: "Đăng nhập quá nhiều lần. Thử lại sau 15 phút." },
-    }),
-    async (req, res) => {
-      const input = z
-        .object({ email: z.string().email().max(254), password: z.string().min(1).max(128) })
-        .strict()
-        .parse(req.body);
-      const user = (
-        await pool.query("SELECT * FROM users WHERE email=$1", [input.email.toLowerCase()])
-      ).rows[0];
-      const matches = await checkPassword(input.password, user?.password_hash || (await dummyHash));
-      assert(
-        matches && user?.active,
-        401,
-        "Email hoặc mật khẩu không đúng, hoặc tài khoản bị khóa.",
-      );
-      const token = newToken(),
-        csrfToken = newToken();
-      await transaction(pool, async (client) => {
-        const lockedUser = (
-          await client.query("SELECT password_hash,active FROM users WHERE id=$1 FOR SHARE", [
-            user.id,
-          ])
-        ).rows[0];
-        assert(
-          lockedUser?.active && lockedUser.password_hash === user.password_hash,
-          401,
-          "Thông tin tài khoản vừa thay đổi. Vui lòng đăng nhập lại.",
-        );
-        await client.query("DELETE FROM sessions WHERE expires_at < now()");
-        const previous = req.headers.cookie?.match(
-          /(?:^|;\s*)nexdesk_session=([a-f0-9]{64})(?:;|$)/,
-        )?.[1];
-        if (previous)
-          await client.query("DELETE FROM sessions WHERE token_hash=$1", [tokenHash(previous)]);
-        await client.query(
-          "INSERT INTO sessions(token_hash,user_id,csrf_token,expires_at) VALUES($1,$2,$3,now()+interval '8 hours')",
-          [tokenHash(token), user.id, csrfToken],
-        );
-        await audit(client, user.id, "login", "users", user.id);
-      });
-      res.cookie(cookieName, token, cookieOptions).json({ user: publicUser(user), csrfToken });
-    },
-  );
-  app.use("/api", async (req, _res, next) => {
-    const token = req.headers.cookie?.match(/(?:^|;\s*)nexdesk_session=([a-f0-9]{64})(?:;|$)/)?.[1];
-    assert(token, 401, "Vui lòng đăng nhập.");
-    const session = (
-      await pool.query(
-        `SELECT u.*,s.csrf_token FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now() AND u.active`,
-        [tokenHash(token)],
-      )
-    ).rows[0];
-    assert(session, 401, "Phiên đăng nhập hết hạn.");
-    req.user = session;
-    req.sessionHash = tokenHash(token);
-    if (!["GET", "HEAD", "OPTIONS"].includes(req.method))
-      assert(
-        req.headers["x-csrf-token"] === session.csrf_token,
-        403,
-        "Phiên xác thực không hợp lệ. Hãy tải lại trang.",
-      );
-    next();
-  });
-  app.get("/api/auth/me", (req, res) =>
-    res.json({ user: publicUser(req.user), csrfToken: req.user.csrf_token }),
-  );
-  app.post("/api/auth/logout", async (req, res) => {
-    await pool.query("DELETE FROM sessions WHERE token_hash=$1", [req.sessionHash]);
-    await audit(pool, req.user.id, "logout", "users", req.user.id);
-    res.clearCookie(cookieName, { ...cookieOptions, maxAge: undefined }).json({ ok: true });
-  });
-  app.post("/api/auth/password", async (req, res) => {
-    const input = z
-      .object({ currentPassword: z.string().max(128), password: z.string().min(12).max(128) })
-      .strict()
-      .parse(req.body);
-    assert(
-      await checkPassword(input.currentPassword, req.user.password_hash),
-      400,
-      "Mật khẩu hiện tại không đúng.",
-    );
-    await transaction(pool, async (client) => {
-      await client.query("UPDATE users SET password_hash=$2 WHERE id=$1", [
-        req.user.id,
-        await hashPassword(input.password),
-      ]);
-      await client.query("DELETE FROM sessions WHERE user_id=$1", [req.user.id]);
-      await audit(client, req.user.id, "password_change", "users", req.user.id);
-    });
-    res.clearCookie(cookieName, { ...cookieOptions, maxAge: undefined }).json({ ok: true });
-  });
+  mountAuthentication(app, pool);
+  app.use("/api/settings/tickets", ticketPolicyRouter(pool));
   app.get("/api/workspace", async (req, res) => res.json(await workspace(pool, req.user)));
   app.get("/api/reports", async (req, res) => {
     assert(req.user.role === "admin", 403, "Chỉ Admin được xuất báo cáo.");
@@ -215,11 +100,26 @@ export function createApp(
   app.use("/api", resourceRouter(pool));
   app.use("/api", (_req, _res, next) => next(new HttpError(404, "API không tồn tại.")));
   app.use((error, _req, res, _next) => {
-    if (error instanceof ZodError)
-      return res.status(400).json({
-        error: "Dữ liệu không hợp lệ.",
-        fields: error.issues.map((i) => ({ field: i.path.join("."), message: i.message })),
-      });
+    if (error instanceof ZodError) {
+      const fields = error.issues.map((issue) => ({
+        field: issue.path.join("."),
+        message:
+          issue.path[0] === "phone"
+            ? "Số điện thoại không hợp lệ. Ví dụ: 0901234567 hoặc +84901234567."
+            : issue.message,
+      }));
+      return res
+        .status(400)
+        .json({
+          error:
+            fields.find((field) => field.field === "phone")?.message || "Dữ liệu không hợp lệ.",
+          fields,
+        });
+    }
+    if (error.code === "23505" && error.constraint === "users_phone_key") {
+      const message = "Số điện thoại này đã liên kết với tài khoản khác.";
+      return res.status(409).json({ error: message, fields: [{ field: "phone", message }] });
+    }
     if (error.code === "23505")
       return res.status(409).json({ error: "Mã, email hoặc bản ghi đã tồn tại." });
     if (error.code === "23503")
@@ -230,6 +130,9 @@ export function createApp(
       return res.status(400).json({ error: "Giá trị dữ liệu không hợp lệ." });
     if (error.code === "LIMIT_FILE_SIZE")
       return res.status(413).json({ error: "Tệp vượt quá 5 MB." });
+    if (error.code === "LIMIT_FILE_COUNT" || error.code === "LIMIT_UNEXPECTED_FILE")
+      return res.status(400).json({ error: "Chỉ được đính kèm tối đa 10 tệp trong mỗi lần gửi." });
+    if (error instanceof HttpError) return res.status(error.status).json({ error: error.message });
     const status = error.status || 400;
     if (status >= 500 || (!error.status && !error.code && !(error instanceof SyntaxError))) {
       console.error("API failure:", error.name, error.code || "unexpected");

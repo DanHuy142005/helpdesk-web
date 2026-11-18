@@ -1,9 +1,7 @@
-import { usePortalData, useActions, useWrite } from "@/shared";
-import { AlarmClock, Globe, Hand, Mail, MessageCircle, Phone } from "lucide-react";
+import { usePortalData, useActions } from "@/shared";
+import { AlarmClock, Globe, Mail, MessageCircle, Phone } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
 
-import { Button } from "@/shared";
 import {
   DataTable,
   PageHeader,
@@ -23,7 +21,7 @@ const channelIcon: Record<Channel, typeof Mail> = {
   Chat: MessageCircle,
 };
 
-const columnsFor = (act: (ticket: QueueTicket) => void): Column<QueueTicket>[] => [
+const columns: Column<QueueTicket>[] = [
   {
     key: "id",
     header: "Mã",
@@ -81,40 +79,15 @@ const columnsFor = (act: (ticket: QueueTicket) => void): Column<QueueTicket>[] =
     ),
   },
   { key: "status", header: "Trạng thái", cell: (t) => <StatusBadge status={t.status} /> },
-  {
-    key: "action",
-    header: "",
-    align: "right",
-    cell: (t) => (
-      <Button
-        size="sm"
-        variant="soft"
-        onClick={(e) => {
-          e.stopPropagation();
-          act(t);
-        }}
-      >
-        <Hand /> {t.status === "Mới" ? "Nhận" : "Chi tiết"}
-      </Button>
-    ),
-  },
 ];
 
 export function HelpdeskQueuePage() {
-  const { queue, stats, workspace } = usePortalData();
+  const { queue, stats } = usePortalData();
   const actions = useActions();
-  const write = useWrite();
-  const columns = columnsFor((t) => {
-    if (t.status === "Mới")
-      void write("/tickets/" + t.id + "/actions", { action: "accept", version: t.version })
-        .then(() => toast.success("Đã nhận " + t.id))
-        .catch(() => {});
-    else actions.openTicket(t.id);
-  });
-  const [tab, setTab] = useState("new");
+  const [tab, setTab] = useState("active");
   const rows =
-    tab === "new"
-      ? queue.filter((t) => t.status === "Mới")
+    tab === "active"
+      ? queue.filter((t) => !["Đã giải quyết", "Đã đóng"].includes(t.status))
       : tab === "risk"
         ? queue.filter((t) => t.slaRisk)
         : queue;
@@ -122,9 +95,9 @@ export function HelpdeskQueuePage() {
   return (
     <div>
       <PageHeader
-        eyebrow="Tiếp nhận"
-        title="Tiếp nhận Ticket"
-        description="Phân loại, xác định mức ưu tiên và nhận xử lý các yêu cầu mới từ mọi kênh."
+        eyebrow="Công việc"
+        title="Ticket được giao"
+        description="Nhấn vào Ticket để xem thông tin và phân loại. Trò chuyện với End User tại Xử lý sự cố."
       />
       <SectionCard>
         <DataTable
@@ -140,9 +113,9 @@ export function HelpdeskQueuePage() {
               onChange={setTab}
               tabs={[
                 {
-                  value: "new",
-                  label: "Mới",
-                  count: queue.filter((t) => t.status === "Mới").length,
+                  value: "active",
+                  label: "Đang mở",
+                  count: stats.active,
                 },
                 {
                   value: "risk",

@@ -4,6 +4,10 @@ import { TechnicianInProgressPage } from "@/portals/technician/pages/InProgressP
 import { pageHead } from "@/shared";
 
 export const Route = createFileRoute("/technician/in-progress")({
-  head: () => pageHead("Ticket đang xử lý · NexDesk Technician", "Cập nhật tiến độ và kết quả xử lý."),
+  head: () =>
+    pageHead(
+      "Xử lý sự cố · NexDesk Technician",
+      "Trao đổi trực tiếp với End User, xem ảnh sự cố và xác nhận kết quả.",
+    ),
   component: TechnicianInProgressPage,
 });

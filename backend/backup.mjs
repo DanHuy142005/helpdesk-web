@@ -3,6 +3,7 @@ import { transaction } from "./db.mjs";
 const tables = [
   "departments",
   "users",
+  "ticket_policy",
   "assets",
   "asset_assignments",
   "software",
@@ -10,6 +11,7 @@ const tables = [
   "documents",
   "tickets",
   "ticket_comments",
+  "ticket_messages",
   "ticket_events",
   "attachments",
   "audit_log",
@@ -58,8 +60,30 @@ export async function restoreBackup(pool, backup, passphrase) {
       "utf8",
     ),
   );
+  // Older backups stored public conversations in ticket_comments.
+  snapshot.ticket_policy ||= [
+    { id: true, auto_close_enabled: false, auto_close_minutes: 1440, version: 1 },
+  ];
+  for (const ticket of snapshot.tickets || []) {
+    ticket.requested_priority ??= ticket.priority;
+    ticket.requested_category ??= ticket.category;
+    if (!("requested_asset_id" in ticket)) ticket.requested_asset_id = ticket.asset_id || null;
+  }
+  if (!snapshot.ticket_messages && Array.isArray(snapshot.ticket_comments))
+    snapshot.ticket_messages = snapshot.ticket_comments
+      .filter((comment) => !comment.internal)
+      .map((comment) => ({
+        id: comment.id,
+        ticket_id: comment.ticket_id,
+        sender_id: comment.author_id,
+        body: comment.body,
+        created_at: comment.created_at,
+      }));
   await transaction(pool, async (client) => {
     await client.query("LOCK TABLE " + tables.join(",") + " IN ACCESS EXCLUSIVE MODE");
+    await client.query(
+      "DELETE FROM ticket_policy WHERE id=true AND version=1 AND updated_by IS NULL AND auto_close_enabled=false AND auto_close_minutes=1440",
+    );
     for (const table of tables) {
       if (Number((await client.query(`SELECT count(*) FROM ${table}`)).rows[0].count))
         throw new Error(
@@ -92,6 +116,9 @@ export async function restoreBackup(pool, backup, passphrase) {
     }
     await client.query(
       "SELECT setval('ticket_number',GREATEST(10000,COALESCE(max(substring(id from 4)::bigint),10000))) FROM tickets",
+    );
+    await client.query(
+      "UPDATE tickets SET status='Đang xử lý' WHERE status='Đã chuyển' AND assignee_id IS NOT NULL",
     );
   });
   return Object.fromEntries(tables.map((table) => [table, snapshot[table].length]));

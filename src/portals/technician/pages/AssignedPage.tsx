@@ -1,9 +1,7 @@
-import { usePortalData, useActions, useWrite } from "@/shared";
-import { MapPin, Play } from "lucide-react";
+import { usePortalData, useActions } from "@/shared";
+import { MapPin } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
 
-import { Button } from "@/shared";
 import {
   DataTable,
   PageHeader,
@@ -16,7 +14,7 @@ import {
 } from "@/shared";
 import { type Job } from "../data";
 
-const columnsFor = (act: (job: Job) => void): Column<Job>[] => [
+const columns: Column<Job>[] = [
   {
     key: "id",
     header: "Mã",
@@ -62,39 +60,11 @@ const columnsFor = (act: (job: Job) => void): Column<Job>[] => [
     ),
   },
   { key: "status", header: "Trạng thái", cell: (j) => <StatusBadge status={j.status} /> },
-  {
-    key: "action",
-    header: "",
-    align: "right",
-    cell: (j) => (
-      <Button
-        size="sm"
-        variant="soft"
-        onClick={(e) => {
-          e.stopPropagation();
-          act(j);
-        }}
-      >
-        <Play /> {j.status === "Đã chuyển" ? "Bắt đầu" : "Chi tiết"}
-      </Button>
-    ),
-  },
 ];
 
 export function TechnicianAssignedPage() {
-  const { jobs, stats, workspace } = usePortalData();
+  const { jobs } = usePortalData();
   const actions = useActions();
-  const write = useWrite();
-  const columns = columnsFor((j) => {
-    if (j.status === "Đã chuyển")
-      void write("/tickets/" + j.id + "/actions", { action: "start", version: j.version })
-        .then(() => {
-          toast.success("Đã bắt đầu " + j.id);
-          actions.openTicket(j.id);
-        })
-        .catch(() => {});
-    else actions.openTicket(j.id);
-  });
   const [tab, setTab] = useState("all");
   const rows =
     tab === "all" ? jobs : jobs.filter((j) => j.priority === "Khẩn cấp" || j.priority === "Cao");
@@ -103,7 +73,7 @@ export function TechnicianAssignedPage() {
       <PageHeader
         eyebrow="Công việc"
         title="Công việc được giao"
-        description="Các Ticket được Helpdesk hoặc quản trị viên giao cho bạn."
+        description="Nhấn vào Ticket để xem thông tin. Trò chuyện với End User và xác nhận kết quả tại Xử lý sự cố."
       />
       <SectionCard>
         <DataTable

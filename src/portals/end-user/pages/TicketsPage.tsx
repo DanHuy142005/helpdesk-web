@@ -1,4 +1,4 @@
-import { usePortalData, useActions, useWrite } from "@/shared";
+import { usePortalData, useActions } from "@/shared";
 import { Link } from "@tanstack/react-router";
 import { PlusCircle } from "lucide-react";
 import { useState } from "react";
@@ -9,7 +9,7 @@ import {
   PageHeader,
   PillTabs,
   PriorityBadge,
-  ProgressBar,
+  TicketCompletionButton,
   SectionCard,
   StatusBadge,
   UserAvatar,
@@ -36,16 +36,6 @@ const columns: Column<MyTicket>[] = [
   { key: "priority", header: "Mức độ", cell: (t) => <PriorityBadge priority={t.priority} /> },
   { key: "status", header: "Trạng thái", cell: (t) => <StatusBadge status={t.status} /> },
   {
-    key: "progress",
-    header: "Tiến độ",
-    cell: (t) => (
-      <div className="flex w-28 items-center gap-2">
-        <ProgressBar value={t.progress} tone={t.progress === 100 ? "success" : "primary"} />
-        <span className="text-[11px] text-muted-foreground">{t.progress}%</span>
-      </div>
-    ),
-  },
-  {
     key: "assignee",
     header: "Người xử lý",
     cell: (t) => (
@@ -60,14 +50,19 @@ const columns: Column<MyTicket>[] = [
     header: "Ngày tạo",
     cell: (t) => <span className="whitespace-nowrap text-muted-foreground">{t.createdAt}</span>,
   },
+  {
+    key: "completion",
+    header: "Xác nhận hoàn thành",
+    align: "right",
+    cell: (ticket) => <TicketCompletionButton ticket={ticket} />,
+  },
 ];
 
 const open = (t: MyTicket) => t.progress < 100;
 
 export function EndUserTicketsPage() {
-  const { myTickets, stats, workspace } = usePortalData();
+  const { myTickets } = usePortalData();
   const actions = useActions();
-  const write = useWrite();
   const [tab, setTab] = useState("all");
   const rows = myTickets.filter((t) =>
     tab === "open" ? open(t) : tab === "done" ? !open(t) : true,

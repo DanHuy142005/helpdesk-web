@@ -4,6 +4,7 @@ import { HelpdeskQueuePage } from "@/portals/helpdesk/pages/QueuePage";
 import { pageHead } from "@/shared";
 
 export const Route = createFileRoute("/helpdesk/queue")({
-  head: () => pageHead("Tiếp nhận Ticket · NexDesk Helpdesk", "Hàng đợi yêu cầu hỗ trợ mới từ mọi kênh."),
+  head: () =>
+    pageHead("Ticket được giao · NexDesk Helpdesk", "Các yêu cầu hỗ trợ do Admin phân công."),
   component: HelpdeskQueuePage,
 });

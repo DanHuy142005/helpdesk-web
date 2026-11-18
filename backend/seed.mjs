@@ -81,7 +81,7 @@ export async function seed(pool, { password, accountsFile } = {}) {
           recipient.department,
           admin.id,
           "Hoạt động tốt",
-          "Cấp phát dữ liệu minh họa ban đầu",
+          "Cấp phát thiết bị phục vụ công việc.",
         ],
       );
       await client.query("UPDATE assets SET status='Đang sử dụng' WHERE id=$1", [asset]);
@@ -104,12 +104,12 @@ export async function seed(pool, { password, accountsFile } = {}) {
       [
         "Quy trình xử lý sự cố CNTT",
         "Quy trình",
-        "Nhân viên gửi yêu cầu. Helpdesk xác minh và tiếp nhận. Nếu cần chuyên môn sâu, chuyển cho Technician kèm các bước đã thử. Người phụ trách ghi kết quả. Người yêu cầu xác nhận đóng hoặc yêu cầu xử lý tiếp.",
+        "Nhân viên gửi yêu cầu. Admin phân công Helpdesk hoặc Technician. Người được giao giải quyết và chat với người yêu cầu. Technician có thể trả Ticket về hàng đợi Helpdesk kèm lý do để Admin phân công lại. Người phụ trách ghi kết quả. Người yêu cầu xác nhận đóng hoặc yêu cầu xử lý tiếp.",
       ],
       [
         "Chính sách bảo mật tài khoản",
         "Chính sách",
-        "Sử dụng mật khẩu riêng cho từng hệ thống, tối thiểu 12 ký tự. Không chia sẻ mật khẩu qua Ticket. Báo ngay Helpdesk khi nghi ngờ bị lộ tài khoản.",
+        "Sử dụng mật khẩu riêng cho từng hệ thống, tối thiểu 7 ký tự. Không chia sẻ mật khẩu qua Ticket. Báo ngay Helpdesk khi nghi ngờ bị lộ tài khoản.",
       ],
     ])
       await client.query(
@@ -119,7 +119,7 @@ export async function seed(pool, { password, accountsFile } = {}) {
     const examples = [
       ["Không đăng nhập được Outlook", "Email & Office", "Mới", null, user, "LT-001"],
       ["Máy in in bị mờ", "Thiết bị ngoại vi", "Đang xử lý", helpdesk, user, "PR-001"],
-      ["Laptop kết nối VPN bị gián đoạn", "Mạng & VPN", "Đã chuyển", technician, user, "LT-001"],
+      ["Laptop kết nối VPN bị gián đoạn", "Mạng & VPN", "Đang xử lý", technician, user, "LT-001"],
       ["Cập nhật phần mềm kế toán", "Phần mềm", "Đã giải quyết", technician, user, "LT-001"],
       ["Không nhận màn hình thứ hai", "Phần cứng", "Đã đóng", technician, user, "LT-001"],
       ["Máy tính kinh doanh chạy chậm", "Phần cứng", "Mới", null, user2, "PC-001"],
@@ -129,8 +129,8 @@ export async function seed(pool, { password, accountsFile } = {}) {
       const [title, category, status, assignee, requester, asset] = examples[i];
       const solved = ["Đã giải quyết", "Đã đóng"].includes(status);
       const { rows } = await client.query(
-        `INSERT INTO tickets(title,description,category,priority,status,requester_id,assignee_id,asset_id,due_at,solution,accepted_at,resolved_at,closed_at,rating,feedback,created_at)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,now()+interval '2 hours',$9,$10,$11,$12,$13,$14,now()-($15::int*interval '1 day')) RETURNING *`,
+        `INSERT INTO tickets(title,description,category,priority,status,requester_id,assignee_id,asset_id,due_at,solution,accepted_at,resolved_at,closed_at,rating,feedback,created_at,requested_priority,requested_category,requested_asset_id)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,now()+interval '2 hours',$9,$10,$11,$12,$13,$14,now()-($15::int*interval '1 day'),$4,$3,$8) RETURNING *`,
         [
           title,
           `Yêu cầu hỗ trợ: ${title}. Sự cố ảnh hưởng công việc, đề nghị bộ phận CNTT kiểm tra.`,
@@ -159,14 +159,22 @@ export async function seed(pool, { password, accountsFile } = {}) {
           t.id,
           requester.id,
           "create",
-          "Dữ liệu minh họa được lưu trong PostgreSQL",
+          "Yêu cầu hỗ trợ được ghi nhận.",
           status,
           assignee?.id || null,
         ],
       );
-      if (assignee)
+      if (assignee) {
         await client.query(
-          "INSERT INTO ticket_comments(id,ticket_id,author_id,body) VALUES($1,$2,$3,$4)",
+          "UPDATE tickets SET assigned_by=$2,classified_by=$2,classification_confirmed_at=now() WHERE id=$1",
+          [t.id, admin.id],
+        );
+        await client.query(
+          "INSERT INTO ticket_events(id,ticket_id,actor_id,action,note,from_status,to_status,assignee_id) VALUES($1,$2,$3,'assign',$4,'Mới',$5,$6)",
+          [randomUUID(), t.id, admin.id, "Admin phân công người xử lý.", status, assignee.id],
+        );
+        await client.query(
+          "INSERT INTO ticket_messages(id,ticket_id,sender_id,body) VALUES($1,$2,$3,$4)",
           [
             randomUUID(),
             t.id,
@@ -174,10 +182,18 @@ export async function seed(pool, { password, accountsFile } = {}) {
             solved ? t.solution : "Đã nhận thông tin, đang kiểm tra và xử lý.",
           ],
         );
+      }
     }
     await client.query(
       "INSERT INTO audit_log(id,actor_id,action,entity,entity_id,details) VALUES($1,$2,$3,$4,$5,$6)",
-      [randomUUID(), admin.id, "seed", "system", "initial", JSON.stringify({ demo: true })],
+      [
+        randomUUID(),
+        admin.id,
+        "initialize",
+        "system",
+        "initial",
+        JSON.stringify({ initialized: true }),
+      ],
     );
     const credentials = accounts.map((a) => ({
       email: a.email,

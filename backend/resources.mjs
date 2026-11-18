@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
-import multer from "multer";
+import { upload, validateAttachments, saveAttachments } from "./attachments.mjs";
 import { transaction } from "./db.mjs";
+import { optionalPhoneSchema } from "./phone.mjs";
 import {
   assert,
   audit,
@@ -26,11 +27,12 @@ const schemas = {
         .email()
         .max(254)
         .transform((v) => v.toLowerCase()),
+      phone: optionalPhoneSchema.optional(),
       role: z.enum(["admin", "helpdesk", "technician", "end-user"]),
       department_id: s().nullable(),
       position: s(0),
       active: z.boolean(),
-      password: z.string().min(12).max(128).optional(),
+      password: z.string().min(7).max(128).optional(),
     })
     .strict(),
   assets: z
@@ -118,8 +120,20 @@ export function resourceRouter(pool) {
           if (entity === "users") {
             const password = record.password;
             delete record.password;
-            assert(update || password, 400, "Tài khoản mới cần mật khẩu ít nhất 12 ký tự.");
+            assert(update || password, 400, "Tài khoản mới cần mật khẩu ít nhất 7 ký tự.");
             if (password) record.password_hash = await hashPassword(password);
+            if (
+              update &&
+              (password ||
+                (input.phone !== undefined && input.phone !== previous.phone) ||
+                !input.active ||
+                input.role !== previous.role)
+            ) {
+              await client.query("DELETE FROM password_reset_otps WHERE user_id=$1", [recordId]);
+              await client.query("DELETE FROM password_reset_challenges WHERE user_id=$1", [
+                recordId,
+              ]);
+            }
             if (update && password)
               await client.query("DELETE FROM sessions WHERE user_id=$1", [recordId]);
             if (update) {
@@ -302,7 +316,7 @@ export function resourceRouter(pool) {
   router.get("/assets/:id/history", async (req, res) => {
     await assertAssetAccess(pool, req.user, req.params.id);
     // Technicians may only inspect assets connected to their assigned work.
-    if (req.user.role === "technician")
+    if (["helpdesk", "technician"].includes(req.user.role))
       assert(
         (
           await pool.query("SELECT id FROM tickets WHERE asset_id=$1 AND assignee_id=$2", [
@@ -387,54 +401,37 @@ export function resourceRouter(pool) {
     res.json({ ...rows[0], attachments });
   });
 
-  const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: 5 * 1024 * 1024, files: 1 },
-  });
-  router.post("/:entity/:id/attachments", upload.single("file"), async (req, res) => {
-    const { entity, id } = req.params;
-    assert(["tickets", "documents"].includes(entity), 404, "Không tìm thấy tài nguyên.");
-    assert(req.file, 400, "Chọn tệp cần tải lên.");
-    const { buffer, mimetype, originalname } = req.file;
-    const valid =
-      (mimetype === "image/png" &&
-        buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) ||
-      (mimetype === "image/jpeg" && buffer[0] === 255 && buffer[1] === 216 && buffer[2] === 255) ||
-      (mimetype === "application/pdf" && buffer.subarray(0, 5).toString() === "%PDF-") ||
-      (mimetype === "text/plain" && !buffer.includes(0));
-    assert(valid, 400, "Chỉ nhận PNG, JPEG, PDF, TXT đúng định dạng; tối đa 5 MB.");
-    const attachment = await transaction(pool, async (client) => {
-      if (entity === "tickets") {
-        const t = await getTicket(client, req.user, id, true);
-        assert(t.status !== "Đã đóng", 409, "Ticket đã đóng.");
-      } else {
-        const d = await assertDocument(client, req.user, id);
-        assert(
-          req.user.role === "admin" ||
-            (req.user.role !== "end-user" && d.author_id === req.user.id && !d.published),
-          403,
-          "Không được đính kèm tài liệu này.",
-        );
-      }
-      const attachmentId = randomUUID();
-      await client.query(
-        "INSERT INTO attachments(id,ticket_id,document_id,author_id,name,mime,data,size) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
-        [
-          attachmentId,
-          entity === "tickets" ? id : null,
-          entity === "documents" ? id : null,
-          req.user.id,
-          originalname.slice(0, 200),
-          mimetype,
-          buffer,
-          buffer.length,
-        ],
-      );
-      await audit(client, req.user.id, "upload", entity, id, { attachmentId, size: buffer.length });
-      return { id: attachmentId };
-    });
-    res.status(201).json(attachment);
-  });
+  router.post(
+    "/:entity/:id/attachments",
+    upload.fields([
+      { name: "file", maxCount: 1 },
+      { name: "files", maxCount: 10 },
+    ]),
+    async (req, res) => {
+      const { entity, id } = req.params;
+      assert(["tickets", "documents"].includes(entity), 404, "Không tìm thấy tài nguyên.");
+      const files = [...(req.files?.file || []), ...(req.files?.files || [])];
+      assert(files.length, 400, "Chọn tệp cần tải lên.");
+      validateAttachments(files);
+      const attachment = await transaction(pool, async (client) => {
+        if (entity === "tickets") {
+          const t = await getTicket(client, req.user, id, true);
+          assert(t.status !== "Đã đóng", 409, "Ticket đã đóng.");
+        } else {
+          const d = await assertDocument(client, req.user, id);
+          assert(
+            req.user.role === "admin" ||
+              (req.user.role !== "end-user" && d.author_id === req.user.id && !d.published),
+            403,
+            "Không được đính kèm tài liệu này.",
+          );
+        }
+        const saved = await saveAttachments(client, req.user, entity, id, files);
+        return { id: saved[0].id, attachments: saved };
+      });
+      res.status(201).json(attachment);
+    },
+  );
   router.get("/attachments/:id", async (req, res) => {
     const file = (await pool.query("SELECT * FROM attachments WHERE id=$1", [req.params.id]))
       .rows[0];
@@ -444,7 +441,7 @@ export function resourceRouter(pool) {
     res
       .set({
         "Content-Type": file.mime,
-        "Content-Disposition": `attachment; filename="download"; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+        "Content-Disposition": `${req.query.inline === "1" && ["image/png", "image/jpeg"].includes(file.mime) ? "inline" : "attachment"}; filename="download"; filename*=UTF-8''${encodeURIComponent(file.name)}`,
         "X-Content-Type-Options": "nosniff",
       })
       .send(file.data);

@@ -1,25 +1,22 @@
-import { usePortalData, useActions, useWrite } from "@/shared";
+import { usePortalData, useActions } from "@/shared";
 import { Link } from "@tanstack/react-router";
 import { ArrowRight, ArrowRightLeft, CheckCheck, Clock3, Inbox, Smile } from "lucide-react";
 
 import { Button } from "@/shared";
 import {
   AreaTrendChart,
-  Badge,
   DonutChart,
   KpiCard,
   OverviewHero,
   PriorityBadge,
-  ProgressBar,
   SectionCard,
   UserAvatar,
   chartColors as c,
 } from "@/shared";
 
 export function HelpdeskDashboardPage() {
-  const { channels, hourly, queue, technicians, stats, workspace } = usePortalData();
+  const { channels, hourly, queue, assignments, stats, workspace } = usePortalData();
   const actions = useActions();
-  const write = useWrite();
   return (
     <div className="space-y-5">
       <OverviewHero
@@ -28,23 +25,23 @@ export function HelpdeskDashboardPage() {
         actions={
           <Button variant="brand" size="sm" asChild>
             <Link to="/helpdesk/queue">
-              Tiếp nhận ngay <ArrowRight />
+              Ticket được giao <ArrowRight />
             </Link>
           </Button>
         }
         stats={[
-          { value: String(stats.new), label: "Ticket mới" },
+          { value: String(stats.active), label: "Ticket đang mở" },
           { value: String(stats.processing), label: "Đang xử lý" },
           { value: String(stats.solved), label: "Đã giải quyết" },
-          { value: String(stats.escalated), label: "Đã chuyển Technician" },
+          { value: String(stats.waiting), label: "Chờ phản hồi" },
           { value: String(stats.rating), label: "Đánh giá" },
         ]}
       />
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
-          label="Chờ tiếp nhận"
-          value={stats.new}
+          label="Ticket được giao"
+          value={stats.active}
           trend="down"
           icon={Inbox}
           tone="info"
@@ -81,14 +78,14 @@ export function HelpdeskDashboardPage() {
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
         <SectionCard
           title="Lưu lượng Ticket theo giờ"
-          description="Tiếp nhận so với đã xử lý"
+          description="Yêu cầu tạo trong ngày và số đã xử lý"
           className="xl:col-span-8"
         >
           <AreaTrendChart
             data={hourly}
             xKey="hour"
             series={[
-              { key: "tiepNhan", label: "Tiếp nhận", color: c.blue },
+              { key: "tiepNhan", label: "Yêu cầu tạo", color: c.blue },
               { key: "xuLy", label: "Đã xử lý", color: c.cyan },
             ]}
           />
@@ -106,7 +103,7 @@ export function HelpdeskDashboardPage() {
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
         <SectionCard
-          title="Ticket chờ tiếp nhận"
+          title="Ticket đang được giao"
           className="xl:col-span-7"
           actions={
             <Button variant="ghost" size="sm" asChild>
@@ -118,7 +115,7 @@ export function HelpdeskDashboardPage() {
         >
           <ul className="space-y-2">
             {queue
-              .filter((t) => t.status === "Mới")
+              .filter((t) => !["Đã giải quyết", "Đã đóng"].includes(t.status))
               .slice(0, 5)
               .map((t) => (
                 <li
@@ -151,44 +148,39 @@ export function HelpdeskDashboardPage() {
           </ul>
         </SectionCard>
         <SectionCard
-          title="Technician sẵn sàng"
+          title="Phân công gần đây"
           className="xl:col-span-5"
           actions={
             <Button variant="soft" size="sm" asChild>
               <Link to="/helpdesk/escalate">
-                <ArrowRightLeft /> Chuyển Ticket
+                <ArrowRightLeft /> Xem lịch sử
               </Link>
             </Button>
           }
         >
           <ul className="space-y-4">
-            {technicians.map((t) => (
-              <li key={t.name} className="flex items-center gap-3">
-                <UserAvatar name={t.name} />
+            {assignments.slice(0, 5).map((event) => (
+              <li key={event.id} className="flex items-center gap-3">
+                <UserAvatar name={event.actor} />
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between">
-                    <p className="truncate text-sm font-semibold">{t.name}</p>
-                    <Badge
-                      tone={
-                        t.status === "Sẵn sàng"
-                          ? "success"
-                          : t.status === "Bận"
-                            ? "warning"
-                            : "muted"
-                      }
-                      className="px-2 py-0.5 text-[11px]"
-                    >
-                      {t.status}
-                    </Badge>
-                  </div>
-                  <p className="mb-1.5 text-[11px] text-muted-foreground">{t.skill}</p>
-                  <ProgressBar
-                    value={t.load}
-                    tone={t.load > 80 ? "danger" : t.load > 60 ? "warning" : "primary"}
-                  />
+                  <button
+                    className="text-sm font-semibold text-primary"
+                    onClick={() => actions.openTicket(event.ticket_id)}
+                  >
+                    {event.ticket_id}
+                  </button>
+                  <p className="text-xs text-muted-foreground">
+                    {event.actor} · {event.assignee || "Hàng đợi Helpdesk"}
+                  </p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {new Date(event.created_at).toLocaleString("vi-VN")}
+                  </p>
                 </div>
               </li>
             ))}
+            {!assignments.length && (
+              <li className="text-sm text-muted-foreground">Chưa có phân công mới.</li>
+            )}
           </ul>
         </SectionCard>
       </div>

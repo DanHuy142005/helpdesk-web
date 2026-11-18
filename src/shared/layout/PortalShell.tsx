@@ -7,6 +7,7 @@ import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { AccessGate } from "../api/AccessGate";
 import { useWorkspace } from "../api/client";
+import { OverdueNotice } from "../components/TicketSla";
 
 /**
  * Shared app frame (sidebar + top bar + content) used by every portal.
@@ -48,7 +49,7 @@ function AuthenticatedShell({
       ...group,
       items: group.items.map((item) => {
         const count = item.to.includes("queue")
-          ? data!.tickets.filter((t) => t.status === "Mới").length
+          ? data!.tickets.filter((t) => !["Đã đóng", "Đã giải quyết"].includes(t.status)).length
           : item.to.includes("assigned")
             ? data!.tickets.filter((t) => !["Đã đóng", "Đã giải quyết"].includes(t.status)).length
             : item.to.includes("tickets")
@@ -89,7 +90,10 @@ function AuthenticatedShell({
             onToggleSidebar={() => setCollapsed((c) => !c)}
             onOpenMobile={() => setMobileOpen(true)}
           />
-          <main className="animate-rise min-w-0 flex-1 pb-6">{children}</main>
+          <main className="animate-rise min-w-0 flex-1 pb-6">
+            <OverdueNotice />
+            {children}
+          </main>
         </div>
       </div>
 

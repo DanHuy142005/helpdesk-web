@@ -1,4 +1,4 @@
-import { usePortalData, useActions, useWrite } from "@/shared";
+import { usePortalData, useActions } from "@/shared";
 import { AlarmClock, CheckCircle2, Filter, Inbox, Plus, Ticket } from "lucide-react";
 import { useState } from "react";
 
@@ -9,7 +9,6 @@ import { ticketColumns } from "../columns";
 export function AdminTicketsPage() {
   const { tickets, stats, workspace } = usePortalData();
   const actions = useActions();
-  const write = useWrite();
   const [tab, setTab] = useState("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [priority, setPriority] = useState(""),
@@ -19,11 +18,15 @@ export function AdminTicketsPage() {
   const baseRows =
     tab === "all"
       ? tickets
-      : tab === "open"
-        ? tickets.filter((t) =>
-            ["Mới", "Đang xử lý", "Chờ phản hồi", "Đã chuyển"].includes(t.status),
-          )
-        : tickets.filter((t) => ["Đã giải quyết", "Đã đóng"].includes(t.status));
+      : tab === "unassigned"
+        ? tickets.filter((t) => !t.assignee_id && !["Đã giải quyết", "Đã đóng"].includes(t.status))
+        : tab === "helpdesk"
+          ? tickets.filter((t) => t.queue_role === "helpdesk" && !t.assignee_id)
+          : tab === "open"
+            ? tickets.filter((t) =>
+                ["Mới", "Đang xử lý", "Chờ phản hồi", "Đã chuyển"].includes(t.status),
+              )
+            : tickets.filter((t) => ["Đã giải quyết", "Đã đóng"].includes(t.status));
   const rows = baseRows.filter(
     (t) =>
       (!priority || t.priority === priority) &&
@@ -37,7 +40,7 @@ export function AdminTicketsPage() {
       <PageHeader
         eyebrow="Vận hành"
         title="Quản lý Ticket"
-        description="Theo dõi toàn bộ yêu cầu hỗ trợ, mức ưu tiên và người phụ trách."
+        description="Phân công Ticket cho Helpdesk hoặc Technician, theo dõi tiến độ và hàng đợi chờ xử lý."
         actions={
           <>
             <Button variant="outline" onClick={() => setFiltersOpen((v) => !v)}>
@@ -126,6 +129,8 @@ export function AdminTicketsPage() {
               onChange={setTab}
               tabs={[
                 { value: "all", label: "Tất cả", count: tickets.length },
+                { value: "unassigned", label: "Chờ phân công", count: stats.unassigned },
+                { value: "helpdesk", label: "Trả về Helpdesk", count: stats.pendingHelpdesk },
                 { value: "open", label: "Đang mở", count: stats.active },
                 { value: "done", label: "Hoàn tất", count: stats.solved },
               ]}

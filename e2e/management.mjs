@@ -13,11 +13,12 @@ const suffix = Date.now().toString(36).toUpperCase();
 page.on("pageerror", (e) => errors.push(e.message));
 async function login(email) {
   const a = accounts.find((a) => a.email === email);
-  await page.goto(origin + "/admin");
+  await page.goto(origin + "/");
   await page.getByLabel("Email", { exact: true }).fill(a.email);
   await page.getByLabel("Mật khẩu", { exact: true }).fill(a.password);
   await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
-  await page.locator("header").waitFor();
+  await page.waitForURL("**/admin");
+  await page.locator('summary[aria-label="Tài khoản"]').waitFor();
 }
 async function save() {
   await page
@@ -49,7 +50,7 @@ try {
   await page.getByLabel("Phòng ban", { exact: true }).selectOption("QA-" + suffix);
   await page.getByLabel("Chức vụ", { exact: true }).fill("Nhân viên kiểm thử");
   await page
-    .getByLabel("Mật khẩu (ít nhất 12 ký tự)", { exact: true })
+    .getByLabel("Mật khẩu (ít nhất 7 ký tự)", { exact: true })
     .fill(randomBytes(20).toString("hex"));
   await save();
   results.push("Employee create");
@@ -113,13 +114,11 @@ try {
     .getByLabel("Nội dung", { exact: true })
     .fill("Nội dung tài liệu kỹ thuật để kiểm thử công bố và đính kèm.");
   await page.getByLabel("Công bố cho người đọc", { exact: true }).check();
-  await page
-    .getByLabel("Tệp đính kèm (tùy chọn, tối đa 5 MB)", { exact: true })
-    .setInputFiles({
-      name: "qa.txt",
-      mimeType: "text/plain",
-      buffer: Buffer.from("Test document attachment"),
-    });
+  await page.getByLabel("Tệp đính kèm (tùy chọn, tối đa 5 MB)", { exact: true }).setInputFiles({
+    name: "qa.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("Test document attachment"),
+  });
   await save();
   await page
     .getByRole("button")

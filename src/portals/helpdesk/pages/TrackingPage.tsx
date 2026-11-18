@@ -1,4 +1,4 @@
-import { usePortalData, useActions, useWrite } from "@/shared";
+import { usePortalData, useActions } from "@/shared";
 import { Clock3, MessageSquare } from "lucide-react";
 
 import { cn } from "@/shared";
@@ -24,9 +24,8 @@ interface Card {
 export function HelpdeskTrackingPage() {
   const { queue, stats, workspace } = usePortalData();
   const actions = useActions();
-  const write = useWrite();
   const columns = (
-    ["Mới", "Đang xử lý", "Chờ phản hồi", "Đã chuyển", "Đã giải quyết", "Đã đóng"] as TicketStatus[]
+    ["Mới", "Đang xử lý", "Chờ phản hồi", "Đã giải quyết", "Đã đóng"] as TicketStatus[]
   ).map((status) => ({
     status,
     cards: queue
@@ -45,7 +44,7 @@ export function HelpdeskTrackingPage() {
       <PageHeader
         eyebrow="Điều phối"
         title="Theo dõi công việc"
-        description="Bảng theo dõi tiến độ mọi Ticket do bạn tiếp nhận, kể cả Ticket đã chuyển cho Technician."
+        description="Theo dõi tiến độ các Ticket hiện được Admin phân công cho bạn."
       />
       <div className="scrollbar-thin -mx-1 flex gap-4 overflow-x-auto px-1 pb-2">
         {columns.map((col) => (

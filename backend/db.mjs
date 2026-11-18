@@ -1,5 +1,5 @@
 import pg from "pg";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 // PostgreSQL DATE is a calendar date, not a timestamp; keep YYYY-MM-DD across time zones.
 pg.types.setTypeParser(1082, (value) => value);
 
@@ -30,10 +30,16 @@ export async function migrate(pool) {
     await client.query(
       "CREATE TABLE IF NOT EXISTS schema_versions (version integer PRIMARY KEY, applied_at timestamptz DEFAULT now())",
     );
-    const { rows } = await client.query("SELECT version FROM schema_versions WHERE version = 1");
-    if (!rows.length) {
-      await client.query(await readFile(new URL("./db/001-initial.sql", import.meta.url), "utf8"));
-      await client.query("INSERT INTO schema_versions(version) VALUES(1)");
+    const { rows } = await client.query("SELECT version FROM schema_versions");
+    const applied = new Set(rows.map((row) => row.version));
+    const files = (await readdir(new URL("./db/", import.meta.url)))
+      .filter((file) => /^\d+-.*\.sql$/.test(file))
+      .sort();
+    for (const file of files) {
+      const version = Number(file.split("-")[0]);
+      if (applied.has(version)) continue;
+      await client.query(await readFile(new URL(`./db/${file}`, import.meta.url), "utf8"));
+      await client.query("INSERT INTO schema_versions(version) VALUES($1)", [version]);
     }
   });
 }

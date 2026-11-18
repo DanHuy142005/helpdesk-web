@@ -8,15 +8,23 @@ export const technicianConfig: PortalConfig = {
   homeTo: "/technician",
   brand: { name: "NexDesk", product: "Technician Portal", icon: Wrench },
   user: { name: "Phạm Đức Huy", role: "Kỹ thuật viên hệ thống", initials: "ĐH" },
-  greeting: { title: "Chào Huy, chúc ngày làm việc hiệu quả", subtitle: "Bạn có 6 công việc cần xử lý" },
+  greeting: {
+    title: "Chào Huy, chúc ngày làm việc hiệu quả",
+    subtitle: "Bạn có 6 công việc cần xử lý",
+  },
   searchPlaceholder: "Tìm Ticket, mã thiết bị, serial...",
   nav: [
     {
       title: "Công việc",
       items: [
         { label: "Dashboard", to: "/technician", icon: LayoutDashboard, exact: true },
-        { label: "Công việc được giao", to: "/technician/assigned", icon: ClipboardList, badge: "6" },
-        { label: "Ticket đang xử lý", to: "/technician/in-progress", icon: Wrench },
+        {
+          label: "Công việc được giao",
+          to: "/technician/assigned",
+          icon: ClipboardList,
+          badge: "6",
+        },
+        { label: "Xử lý sự cố", to: "/technician/in-progress", icon: Wrench },
       ],
     },
     {

@@ -5,6 +5,7 @@ import { startLocalDatabase } from "./database.mjs";
 import { createPool, migrate } from "../backend/db.mjs";
 import { seed } from "../backend/seed.mjs";
 import { createApp } from "../backend/app.mjs";
+import { startTicketMaintenance } from "../backend/maintenance.mjs";
 import { createServer } from "node:net";
 
 const args = process.argv.slice(2);
@@ -27,12 +28,14 @@ let db,
   pool,
   server,
   web,
+  stopMaintenance,
   stopping = false;
 async function stop(code = 0) {
   if (stopping) return;
   stopping = true;
   web?.kill("SIGTERM");
   if (server) await new Promise((done) => server.close(done));
+  await stopMaintenance?.();
   await pool?.end();
   await db?.stop();
   process.exit(code);
@@ -57,6 +60,7 @@ try {
     server.once("error", reject);
   });
   console.log(`NexDesk API ready: http://127.0.0.1:${apiPort}`);
+  stopMaintenance = startTicketMaintenance(pool);
   web = spawn(
     process.execPath,
     [

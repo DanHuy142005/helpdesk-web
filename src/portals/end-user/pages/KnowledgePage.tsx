@@ -42,8 +42,7 @@ export function EndUserKnowledgePage() {
         description="Tự xử lý nhanh các sự cố CNTT thường gặp."
       />
 
-      <section className="relative overflow-hidden rounded-card border border-card bg-hero p-6 shadow-card sm:p-8">
-        <div className="animate-blob pointer-events-none absolute -right-10 -top-20 size-64 rounded-full bg-cyan/50 blur-3xl" />
+      <section className="relative overflow-hidden rounded-card border border-card bg-knowledge p-6 shadow-card sm:p-8">
         <div className="relative max-w-xl">
           <p className="flex items-center gap-1.5 text-xs font-semibold text-primary">
             <Sparkles className="size-3.5" /> {articles.length} bài hướng dẫn

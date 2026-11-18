@@ -19,11 +19,7 @@ export function OverviewHero({
   actions?: ReactNode;
 }) {
   return (
-    <section className="relative overflow-hidden rounded-card border border-card bg-hero p-5 shadow-card sm:p-6">
-      <div className="animate-blob pointer-events-none absolute -right-10 -top-24 size-72 rounded-full bg-cyan/50 blur-3xl" />
-      <div className="pointer-events-none absolute right-[22%] top-6 size-56 rounded-full border-[28px] border-card/50" />
-      <div className="pointer-events-none absolute -bottom-20 left-10 size-56 rounded-full bg-lavender/30 blur-3xl" />
-
+    <section className="relative overflow-hidden rounded-card border border-card bg-dashboard p-5 shadow-card sm:p-6">
       <div className="relative flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-foreground">{title}</h2>

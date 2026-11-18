@@ -32,7 +32,13 @@ export function KpiCard({
 }: KpiCardProps) {
   const positive = trend !== "down";
   return (
-    <div className={cn("card-surface flex flex-col justify-between gap-4 p-5", className)}>
+    <div
+      data-kpi-tone={tone}
+      className={cn(
+        "card-surface kpi-background flex flex-col justify-between gap-4 p-5",
+        className,
+      )}
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-baseline gap-2">

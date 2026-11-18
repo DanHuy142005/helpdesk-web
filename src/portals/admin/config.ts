@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  AlarmClock,
   Building2,
   FileText,
   LayoutDashboard,
@@ -31,6 +32,7 @@ export const adminConfig: PortalConfig = {
       title: "Vận hành",
       items: [
         { label: "Quản lý Ticket", to: "/admin/tickets", icon: Ticket, badge: "24" },
+        { label: "SLA & tự đóng", to: "/admin/sla", icon: AlarmClock },
         { label: "Nhân viên", to: "/admin/employees", icon: Users },
         { label: "Phòng ban", to: "/admin/departments", icon: Building2 },
       ],

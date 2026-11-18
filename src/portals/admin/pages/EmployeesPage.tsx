@@ -47,6 +47,7 @@ const columns: Column<Employee>[] = [
     cell: (e) => <span className="text-muted-foreground">{e.id}</span>,
   },
   { key: "department", header: "Phòng ban", cell: (e) => e.department },
+  { key: "phone", header: "Số điện thoại", cell: (e) => e.phone || "Chưa liên kết" },
   { key: "position", header: "Chức vụ", cell: (e) => e.position },
   {
     key: "role",
@@ -110,7 +111,7 @@ export function AdminEmployeesPage() {
           columns={columns}
           rows={employees}
           getRowKey={(e) => e.id}
-          searchText={(e) => `${e.name} ${e.email} ${e.department} ${e.position}`}
+          searchText={(e) => `${e.name} ${e.email} ${e.phone || ""} ${e.department} ${e.position}`}
           searchPlaceholder="Tìm nhân viên..."
           totalLabel="bản ghi"
         />

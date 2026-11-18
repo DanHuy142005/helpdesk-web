@@ -153,7 +153,7 @@ export function EndUserDashboardPage() {
           >
             <ul className="space-y-3">
               {announcements.map((a) => (
-                <li key={a.title} className="flex gap-3">
+                <li key={a.id} className="flex gap-3">
                   <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", toneDot[a.tone])} />
                   <div>
                     <p className="text-sm font-semibold">{a.title}</p>
