@@ -2,7 +2,7 @@
 
 **Phân tích và kiểm thử:** [Các lỗi đã sửa và bằng chứng kiểm tra](doc/PHAN_TICH_VA_KIEM_THU.md).
 
-This project was built with [Lovable](https://lovable.dev).
+
 
 
 ## Development
