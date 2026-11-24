@@ -199,6 +199,9 @@ try {
   assert.equal(await userDetails.getByRole("textbox").count(), 0);
   assert.equal(await userDetails.locator('input[type="file"]').count(), 0);
   await expect(userDetails.getByRole("region", { name: "Lịch sử trạng thái" })).toBeVisible();
+  await expect(
+    userDetails.getByRole("button", { name: "Thu hồi Ticket", exact: true }),
+  ).toBeVisible();
   await expect(userDetails.getByRole("combobox")).toHaveCount(3);
   await userDetails.getByLabel("Mức ưu tiên", { exact: true }).selectOption("Cao");
   await userDetails.getByRole("button", { name: "Lưu phân loại", exact: true }).click();
@@ -227,6 +230,13 @@ try {
     .selectOption({ label: "Phạm Đức Huy · Technician" });
   await adminDetails.getByRole("button", { name: "Xác nhận phân công", exact: true }).click();
   await acknowledge(admin, "Đã phân công");
+  await requester.reload();
+  await userRow.click();
+  await expect(userDetails.getByRole("heading", { name: title, exact: true })).toBeVisible();
+  await expect(
+    userDetails.getByRole("button", { name: "Thu hồi Ticket", exact: true }),
+  ).toHaveCount(0);
+  await userDetails.getByRole("button", { name: "Close", exact: true }).click();
   await tech.goto(origin + "/technician/assigned");
   const techRow = tech.getByRole("row").filter({ hasText: title });
   assert.equal(await tech.getByRole("button", { name: "Chi tiết & chat", exact: true }).count(), 0);
@@ -409,6 +419,47 @@ try {
     page: "Requested doc fixes: multi-image previews/upload, readonly details, centered notices, two incident workspaces, chat, resolution/reopen and completion",
     status: "PASS",
   });
+  await admin.getByRole("button", { name: /^Đã đóng/ }).click();
+  const closedRow = admin.getByRole("row").filter({ hasText: title });
+  await closedRow.click();
+  await adminDetails.getByRole("button", { name: "Xóa Ticket", exact: true }).click();
+  const deleteDialog = admin.getByRole("alertdialog", { name: `Xóa Ticket ${ticketId}?` });
+  await deleteDialog.getByRole("button", { name: "Quay lại", exact: true }).click();
+  await expect(adminDetails.getByRole("button", { name: "Xóa Ticket", exact: true })).toBeVisible();
+  await adminDetails.getByRole("button", { name: "Xóa Ticket", exact: true }).click();
+  await deleteDialog.getByRole("button", { name: "Xóa vĩnh viễn", exact: true }).click();
+  await acknowledge(admin, "Đã xóa Ticket");
+  await expect(closedRow).toHaveCount(0);
+  await expect(
+    requester.getByLabel("Chọn yêu cầu cần theo dõi").locator(`option[value="${ticketId}"]`),
+  ).toHaveCount(0);
+
+  const withdrawTitle = `E2E thu hồi ${new Date().toISOString()}`;
+  await requester.setViewportSize({ width: 1440, height: 1000 });
+  await requester.goto(origin + "/end-user/new-request");
+  await requester.locator('input[name="title"]').fill(withdrawTitle);
+  await requester
+    .locator('textarea[name="description"]')
+    .fill("Yêu cầu sẽ được thu hồi trước khi phân công.");
+  await requester.getByRole("button", { name: "Gửi yêu cầu", exact: true }).click();
+  await requester.waitForURL("**/end-user/tickets");
+  await acknowledge(requester, "Đã gửi yêu cầu hỗ trợ");
+  const withdrawRow = requester.getByRole("row").filter({ hasText: withdrawTitle });
+  const withdrawId = (
+    await withdrawRow.locator("td").first().locator("p").first().innerText()
+  ).trim();
+  await withdrawRow.click();
+  await userDetails.getByRole("button", { name: "Thu hồi Ticket", exact: true }).click();
+  const withdrawDialog = requester.getByRole("alertdialog", {
+    name: `Thu hồi Ticket ${withdrawId}?`,
+  });
+  await withdrawDialog.getByRole("button", { name: "Xác nhận thu hồi", exact: true }).click();
+  await acknowledge(requester, "Đã thu hồi Ticket");
+  await requester.getByRole("button", { name: /^Đã thu hồi/ }).click();
+  await expect(withdrawRow.getByText("Đã thu hồi", { exact: true })).toBeVisible();
+  await admin.getByRole("button", { name: /^Chờ phân công/ }).click();
+  await expect(admin.getByRole("row").filter({ hasText: withdrawTitle })).toHaveCount(0);
+  results.push({ page: "End User withdrawal and Admin closed-ticket deletion", status: "PASS" });
   assert.equal(errors.length, 0, JSON.stringify(errors));
   await writeFile(
     `.runtime/browser-verification${browserChannel === "msedge" ? "" : "-" + browserChannel}.json`,

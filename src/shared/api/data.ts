@@ -1,6 +1,6 @@
 import { useWorkspace } from "./client";
 import { chartColors as c } from "../lib/chartColors";
-import type { TicketStatus } from "../lib/ticket";
+import { isOpenTicketStatus, type TicketStatus } from "../lib/ticket";
 import type { Tone } from "../lib/tones";
 import type { Role } from "./types";
 export const categories = [
@@ -42,7 +42,11 @@ export function usePortalData(range?: { from: string; to: string }) {
     department: t.department || "—",
     assignee:
       t.assignee ||
-      (t.queue_role === "helpdesk" ? "Chờ Admin phân công Helpdesk" : "Chờ Admin phân công"),
+      (t.status === "Đã thu hồi"
+        ? "—"
+        : t.queue_role === "helpdesk"
+          ? "Chờ Admin phân công Helpdesk"
+          : "Chờ Admin phân công"),
     createdAt: format(t.created_at),
     updatedAt: new Date(t.updated_at).toLocaleString("vi-VN"),
     progress: {
@@ -52,14 +56,17 @@ export function usePortalData(range?: { from: string; to: string }) {
       "Đã chuyển": 35,
       "Đã giải quyết": 90,
       "Đã đóng": 100,
+      "Đã thu hồi": 0,
     }[t.status],
     channel: "Cổng web" as const,
     waiting: Math.max(0, Math.floor((now.getTime() - Date.parse(t.created_at)) / 60000)) + " phút",
     slaLeft:
-      (Date.parse(t.due_at) < now.getTime() ? "Quá hạn " : "Còn ") +
-      Math.abs(Math.round((Date.parse(t.due_at) - now.getTime()) / 60000)) +
-      " phút",
-    slaRisk: !completed(t.status) && Date.parse(t.due_at) - now.getTime() < 15 * 60000,
+      t.status === "Đã thu hồi"
+        ? "—"
+        : (Date.parse(t.due_at) < now.getTime() ? "Quá hạn " : "Còn ") +
+          Math.abs(Math.round((Date.parse(t.due_at) - now.getTime()) / 60000)) +
+          " phút",
+    slaRisk: isOpenTicketStatus(t.status) && Date.parse(t.due_at) - now.getTime() < 15 * 60000,
   }));
   const monthlyTickets = Array.from({ length: 12 }, (_, i) => {
     const date = new Date(now.getFullYear(), now.getMonth() - 11 + i, 1),
@@ -68,7 +75,7 @@ export function usePortalData(range?: { from: string; to: string }) {
     return {
       month: `T${date.getMonth() + 1}`,
       moi: month.filter((t) => t.status === "Mới").length,
-      dangXuLy: month.filter((t) => !completed(t.status) && t.status !== "Mới").length,
+      dangXuLy: month.filter((t) => isOpenTicketStatus(t.status) && t.status !== "Mới").length,
       daGiaiQuyet: month.filter((t) => completed(t.status)).length,
       daGui: month.length,
       daXong: month.filter((t) => completed(t.status)).length,
@@ -87,11 +94,6 @@ export function usePortalData(range?: { from: string; to: string }) {
     owner: a.owner || "—",
     department: a.department || "Kho CNTT",
     warranty: format(a.warranty),
-    os: a.specs.os || "Chưa ghi nhận",
-    cpu: a.specs.cpu || "Chưa ghi nhận",
-    ram: a.specs.ram || "Chưa ghi nhận",
-    storage: a.specs.storage || "Chưa ghi nhận",
-    health: a.specs.health ?? 0,
     lastTicket: tickets.find((t) => t.asset_id === a.id)?.id || "—",
     tickets: tickets.filter((t) => t.asset_id === a.id).length,
   }));
@@ -125,7 +127,9 @@ export function usePortalData(range?: { from: string; to: string }) {
   const technicians = w.users
     .filter((u) => u.role === "technician" && u.active)
     .map((u) => {
-      const active = tickets.filter((t) => t.assignee_id === u.id && !completed(t.status)).length;
+      const active = tickets.filter(
+        (t) => t.assignee_id === u.id && isOpenTicketStatus(t.status),
+      ).length;
       return {
         id: u.id,
         name: u.name,
@@ -136,7 +140,7 @@ export function usePortalData(range?: { from: string; to: string }) {
       };
     });
   const jobs = tickets
-    .filter((t) => !completed(t.status))
+    .filter((t) => isOpenTicketStatus(t.status))
     .map((t) => ({
       ...t,
       location: t.location || t.department,
@@ -177,9 +181,9 @@ export function usePortalData(range?: { from: string; to: string }) {
   const stats = {
     total: tickets.length,
     new: tickets.filter((t) => t.status === "Mới").length,
-    unassigned: tickets.filter((t) => !t.assignee_id && !completed(t.status)).length,
+    unassigned: tickets.filter((t) => !t.assignee_id && isOpenTicketStatus(t.status)).length,
     pendingHelpdesk: tickets.filter((t) => !t.assignee_id && t.queue_role === "helpdesk").length,
-    active: tickets.filter((t) => !completed(t.status)).length,
+    active: tickets.filter((t) => isOpenTicketStatus(t.status)).length,
     processing: tickets.filter((t) => t.status === "Đang xử lý").length,
     waiting: tickets.filter((t) => t.status === "Chờ phản hồi").length,
     escalated: tickets.filter((t) => t.status === "Đã chuyển").length,
@@ -264,7 +268,8 @@ export function usePortalData(range?: { from: string; to: string }) {
     .map((u) => ({
       name: u.name,
       hoanThanh: solved.filter((t) => t.assignee_id === u.id).length,
-      dangXuLy: tickets.filter((t) => t.assignee_id === u.id && !completed(t.status)).length,
+      dangXuLy: tickets.filter((t) => t.assignee_id === u.id && isOpenTicketStatus(t.status))
+        .length,
     }));
   const slaTrend = monthlyTickets.map((month) => {
     const items = tickets.filter(

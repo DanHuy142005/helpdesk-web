@@ -22,6 +22,7 @@ import {
   SectionCard,
   StatusBadge,
   chartColors as c,
+  isFinalTicketStatus,
   toneDot,
 } from "@/shared";
 
@@ -30,7 +31,7 @@ export function EndUserDashboardPage() {
     usePortalData();
   const actions = useActions();
   const write = useWrite();
-  const active = myTickets.filter((t) => t.progress < 100);
+  const active = myTickets.filter((t) => !isFinalTicketStatus(t.status));
 
   return (
     <div className="space-y-5">

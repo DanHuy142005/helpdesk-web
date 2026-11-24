@@ -26,7 +26,7 @@ export async function workspace(pool, user, range = {}) {
       ),
       pool.query(
         `SELECT d.*, (SELECT count(*)::int FROM users u WHERE u.department_id=d.id) staff,
-      (SELECT count(*)::int FROM tickets t JOIN users u ON u.id=t.requester_id WHERE u.department_id=d.id AND t.status NOT IN ('Đã đóng','Đã giải quyết')) open_tickets,
+      (SELECT count(*)::int FROM tickets t JOIN users u ON u.id=t.requester_id WHERE u.department_id=d.id AND t.status NOT IN ('Đã đóng','Đã giải quyết','Đã thu hồi')) open_tickets,
       (SELECT count(*)::int FROM asset_assignments a WHERE a.department_id=d.id AND a.ended_at IS NULL) assets,
       (SELECT round(avg(t.rating)*20)::int FROM tickets t JOIN users u ON u.id=t.requester_id WHERE u.department_id=d.id) satisfaction
       FROM departments d WHERE $1='admin' ORDER BY d.name`,
@@ -43,10 +43,11 @@ export async function workspace(pool, user, range = {}) {
       coalesce((SELECT json_agg(i.asset_id) FROM software_installations i WHERE i.software_id=s.id),'[]') installations FROM software s ORDER BY s.name`)
         : Promise.resolve({ rows: [] }),
       pool.query(
-        `SELECT d.id,d.title,d.category,d.content,d.visibility,d.published,d.author_id,d.views,d.updated_at,u.name owner,
+        `SELECT d.id,d.title,d.category,d.content,split_part(d.access_level,'_',2) visibility,
+      d.access_level IN ('published_public','published_internal') published,d.author_id,d.views,d.updated_at,u.name owner,
       octet_length(d.content)::int + coalesce((SELECT sum(size) FROM attachments a WHERE a.document_id=d.id),0)::int bytes
       FROM documents d JOIN users u ON u.id=d.author_id
-      WHERE $1='admin' OR (d.published AND ($1<>'end-user' OR d.visibility='public')) OR ($1<>'end-user' AND d.author_id=$2) ORDER BY d.updated_at DESC`,
+      WHERE $1='admin' OR d.access_level='published_public' OR ($1<>'end-user' AND (d.access_level='published_internal' OR d.author_id=$2)) ORDER BY d.updated_at DESC`,
         [user.role, user.id],
       ),
       pool.query(
@@ -70,7 +71,7 @@ export async function workspace(pool, user, range = {}) {
     tickets: tickets.rows,
     users: users.rows,
     departments: departments.rows,
-    assets: assets.rows,
+    assets: assets.rows.map((asset) => ({ ...asset, version: asset.updated_at.getTime() })),
     software: software.rows,
     documents: documents.rows,
     notifications: notifications.rows,

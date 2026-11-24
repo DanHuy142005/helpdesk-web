@@ -1,4 +1,4 @@
-import { usePortalData, useActions } from "@/shared";
+import { isOpenTicketStatus, isOverdue, usePortalData, useActions } from "@/shared";
 import { AlarmClock, CheckCircle2, Filter, Inbox, Plus, Ticket } from "lucide-react";
 import { useState } from "react";
 
@@ -19,14 +19,14 @@ export function AdminTicketsPage() {
     tab === "all"
       ? tickets
       : tab === "unassigned"
-        ? tickets.filter((t) => !t.assignee_id && !["Đã giải quyết", "Đã đóng"].includes(t.status))
+        ? tickets.filter((t) => !t.assignee_id && isOpenTicketStatus(t.status))
         : tab === "helpdesk"
           ? tickets.filter((t) => t.queue_role === "helpdesk" && !t.assignee_id)
           : tab === "open"
-            ? tickets.filter((t) =>
-                ["Mới", "Đang xử lý", "Chờ phản hồi", "Đã chuyển"].includes(t.status),
-              )
-            : tickets.filter((t) => ["Đã giải quyết", "Đã đóng"].includes(t.status));
+            ? tickets.filter((t) => isOpenTicketStatus(t.status))
+            : tab === "closed"
+              ? tickets.filter((t) => t.status === "Đã đóng")
+              : tickets.filter((t) => ["Đã giải quyết", "Đã đóng"].includes(t.status));
   const rows = baseRows.filter(
     (t) =>
       (!priority || t.priority === priority) &&
@@ -57,13 +57,7 @@ export function AdminTicketsPage() {
         <KpiCard label="Đang mở" value={stats.active} trend="down" icon={Inbox} tone="info" />
         <KpiCard
           label="Quá hạn SLA"
-          value={
-            workspace.tickets.filter(
-              (t) =>
-                !["Đã đóng", "Đã giải quyết"].includes(t.status) &&
-                Date.parse(t.due_at) < Date.now(),
-            ).length
-          }
+          value={workspace.tickets.filter((t) => isOverdue(t, workspace.serverTime)).length}
           trend="down"
           icon={AlarmClock}
           tone="danger"
@@ -133,6 +127,7 @@ export function AdminTicketsPage() {
                 { value: "helpdesk", label: "Trả về Helpdesk", count: stats.pendingHelpdesk },
                 { value: "open", label: "Đang mở", count: stats.active },
                 { value: "done", label: "Hoàn tất", count: stats.solved },
+                { value: "closed", label: "Đã đóng", count: stats.closed },
               ]}
             />
           }

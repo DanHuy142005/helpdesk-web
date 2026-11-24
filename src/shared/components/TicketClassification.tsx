@@ -5,6 +5,7 @@ import { useWorkspace, useWrite } from "../api/client";
 import { useActions } from "../api/Actions";
 import { categories } from "../api/data";
 import type { ApiTicket } from "../api/types";
+import { isFinalTicketStatus } from "../lib/ticket";
 import { Field } from "./Field";
 
 export function TicketClassification({ ticket }: { ticket: ApiTicket }) {
@@ -16,7 +17,7 @@ export function TicketClassification({ ticket }: { ticket: ApiTicket }) {
   if (
     !workspace ||
     !["admin", "end-user"].includes(workspace.user.role) ||
-    ticket.status === "Đã đóng"
+    isFinalTicketStatus(ticket.status)
   )
     return null;
   const admin = workspace.user.role === "admin";

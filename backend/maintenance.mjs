@@ -54,7 +54,7 @@ export async function runTicketMaintenance(pool, now = new Date()) {
     }
     const overdue = (
       await client.query(
-        "SELECT * FROM tickets WHERE status NOT IN ('Đã giải quyết','Đã đóng') AND assignee_id IS NOT NULL AND due_at<$1 AND (sla_alert_due_at IS DISTINCT FROM due_at OR sla_alert_assignee_id IS DISTINCT FROM assignee_id) ORDER BY due_at LIMIT 500 FOR UPDATE SKIP LOCKED",
+        "SELECT * FROM tickets WHERE status NOT IN ('Đã giải quyết','Đã đóng','Đã thu hồi') AND assignee_id IS NOT NULL AND due_at<$1 AND (sla_alert_due_at IS DISTINCT FROM due_at OR sla_alert_assignee_id IS DISTINCT FROM assignee_id) ORDER BY due_at LIMIT 500 FOR UPDATE SKIP LOCKED",
         [now],
       )
     ).rows;

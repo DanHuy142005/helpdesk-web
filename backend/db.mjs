@@ -3,6 +3,9 @@ import { readFile, readdir } from "node:fs/promises";
 // PostgreSQL DATE is a calendar date, not a timestamp; keep YYYY-MM-DD across time zones.
 pg.types.setTypeParser(1082, (value) => value);
 
+// API revision tokens use JavaScript millisecond timestamps. Advance even on same-millisecond writes.
+export const nextUpdatedAt = "GREATEST(clock_timestamp(), updated_at + interval '1 millisecond')";
+
 export function createPool(connectionString = process.env.DATABASE_URL) {
   if (!connectionString)
     throw new Error("Chưa cấu hình DATABASE_URL. Chạy npm run db:local hoặc cấu hình .env.");

@@ -47,6 +47,7 @@ const actionSchema = z
       "confirm",
       "reopen",
       "classify",
+      "withdraw",
     ]),
     version: z.number().int().positive(),
     note: text(0, 10000).default(""),
@@ -99,7 +100,7 @@ async function event(
   const users = new Set(
     [ticket.requester_id, ticket.assignee_id].filter((id) => id && id !== actor),
   );
-  if (["create", "reopen", "return-to-helpdesk"].includes(action)) {
+  if (["create", "reopen", "return-to-helpdesk", "withdraw"].includes(action)) {
     const { rows } = await client.query("SELECT id FROM users WHERE role='admin' AND active");
     rows.forEach((u) => {
       if (u.id !== actor) users.add(u.id);
@@ -225,6 +226,31 @@ export function ticketRouter(pool) {
     });
     res.json(result);
   });
+  router.delete("/:id", async (req, res) => {
+    assert(req.user.role === "admin", 403, "Chỉ Admin được xóa Ticket đã đóng.");
+    const { version } = z.object({ version: z.number().int().positive() }).strict().parse(req.body);
+    await transaction(pool, async (client) => {
+      const ticket = await getTicket(client, req.user, req.params.id, true);
+      assert(
+        ticket.version === version,
+        409,
+        "Ticket vừa được cập nhật. Hãy tải lại trước khi thao tác.",
+      );
+      assert(ticket.status === "Đã đóng", 409, "Chỉ có thể xóa Ticket ở trạng thái Đã đóng.");
+      // Remove Ticket-owned records in the same transaction and retain the audit trail.
+      await client.query("DELETE FROM notifications WHERE ticket_id=$1", [ticket.id]);
+      await client.query("DELETE FROM attachments WHERE ticket_id=$1", [ticket.id]);
+      await client.query("DELETE FROM ticket_comments WHERE ticket_id=$1", [ticket.id]);
+      await client.query("DELETE FROM ticket_messages WHERE ticket_id=$1", [ticket.id]);
+      await client.query("DELETE FROM ticket_events WHERE ticket_id=$1", [ticket.id]);
+      await client.query("DELETE FROM tickets WHERE id=$1", [ticket.id]);
+      await audit(client, req.user.id, "delete", "tickets", ticket.id, {
+        status: ticket.status,
+        closedAt: ticket.closed_at,
+      });
+    });
+    res.json({ ok: true });
+  });
   const performAction = (forcedAction) => async (req, res) => {
     const action = forcedAction || req.body?.action;
     if (["accept", "escalate"].includes(action))
@@ -235,6 +261,8 @@ export function ticketRouter(pool) {
       );
     if (action === "assign")
       assert(req.user.role === "admin", 403, "Chỉ Admin được phân công Ticket.");
+    else if (action === "withdraw")
+      assert(req.user.role === "end-user", 403, "Chỉ End User được thu hồi Ticket của mình.");
     else if (action === "classify")
       assert(
         ["admin", "end-user"].includes(req.user.role),
@@ -268,6 +296,7 @@ export function ticketRouter(pool) {
         409,
         "Ticket vừa được cập nhật. Hãy tải lại trước khi thao tác.",
       );
+      assert(ticket.status !== "Đã thu hồi", 409, "Ticket đã được thu hồi.");
       const previous = ticket.status;
       const previousAssigneeId = ticket.assignee_id;
       const owner = ticket.assignee_id === req.user.id;
@@ -304,6 +333,23 @@ export function ticketRouter(pool) {
         }
       };
       switch (input.action) {
+        case "withdraw":
+          assert(
+            ticket.requester_id === req.user.id,
+            403,
+            "Chỉ người yêu cầu được thu hồi Ticket.",
+          );
+          assert(
+            ticket.status === "Mới" &&
+              !ticket.assignee_id &&
+              !ticket.assigned_by &&
+              !ticket.accepted_at &&
+              !ticket.queue_role,
+            409,
+            "Chỉ có thể thu hồi Ticket trước lần phân công đầu tiên.",
+          );
+          ticket.status = "Đã thu hồi";
+          break;
         case "assign": {
           assert(
             !["Đã giải quyết", "Đã đóng"].includes(ticket.status),
@@ -495,7 +541,11 @@ export function ticketRouter(pool) {
           403,
           "Chỉ người yêu cầu và người đang xử lý được tham gia hội thoại.",
         );
-        assert(ticket.status !== "Đã đóng", 409, "Ticket đã đóng.");
+        assert(
+          !["Đã đóng", "Đã thu hồi"].includes(ticket.status),
+          409,
+          "Ticket đã đóng hoặc đã thu hồi.",
+        );
         assert(ticket.assignee_id, 409, "Ticket đang chờ Admin phân công người xử lý.");
         assert(
           !input.internal || req.user.role === "technician",

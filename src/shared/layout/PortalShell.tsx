@@ -8,6 +8,7 @@ import { Topbar } from "./Topbar";
 import { AccessGate } from "../api/AccessGate";
 import { useWorkspace } from "../api/client";
 import { OverdueNotice } from "../components/TicketSla";
+import { isOpenTicketStatus } from "../lib/ticket";
 
 /**
  * Shared app frame (sidebar + top bar + content) used by every portal.
@@ -30,6 +31,7 @@ function AuthenticatedShell({
 }) {
   const { data } = useWorkspace();
   const user = data!.user;
+  const openCount = data!.tickets.filter((ticket) => isOpenTicketStatus(ticket.status)).length;
   const config: PortalConfig = {
     ...baseConfig,
     user: {
@@ -43,15 +45,14 @@ function AuthenticatedShell({
     },
     greeting: {
       title: `Xin chào, ${user.name.split(" ").at(-1)}`,
-      subtitle: `${data!.tickets.filter((t) => !["Đã đóng", "Đã giải quyết"].includes(t.status)).length} Ticket đang mở`,
+      subtitle: `${openCount} Ticket đang mở`,
     },
     nav: baseConfig.nav.map((group) => ({
       ...group,
       items: group.items.map((item) => {
-        const count = item.to.includes("queue")
-          ? data!.tickets.filter((t) => !["Đã đóng", "Đã giải quyết"].includes(t.status)).length
-          : item.to.includes("assigned")
-            ? data!.tickets.filter((t) => !["Đã đóng", "Đã giải quyết"].includes(t.status)).length
+        const count =
+          item.to.includes("queue") || item.to.includes("assigned")
+            ? openCount
             : item.to.includes("tickets")
               ? data!.tickets.length
               : null;

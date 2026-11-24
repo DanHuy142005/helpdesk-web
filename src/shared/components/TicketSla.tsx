@@ -2,11 +2,11 @@ import { AlarmClock, TriangleAlert } from "lucide-react";
 import { useWorkspace } from "../api/client";
 import { useActions } from "../api/Actions";
 import type { ApiTicket } from "../api/types";
+import { isOpenTicketStatus } from "../lib/ticket";
 
 export function isOverdue(ticket: ApiTicket, now: string | number = Date.now()) {
   return (
-    !["Đã giải quyết", "Đã đóng"].includes(ticket.status) &&
-    new Date(ticket.due_at).getTime() < new Date(now).getTime()
+    isOpenTicketStatus(ticket.status) && new Date(ticket.due_at).getTime() < new Date(now).getTime()
   );
 }
 export function isResolvedLate(ticket: ApiTicket) {

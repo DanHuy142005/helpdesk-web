@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { upload, validateAttachments, saveAttachments } from "./attachments.mjs";
-import { transaction } from "./db.mjs";
+import { nextUpdatedAt, transaction } from "./db.mjs";
 import { optionalPhoneSchema } from "./phone.mjs";
 import {
   assert,
@@ -43,17 +43,7 @@ const schemas = {
       serial: s(0).nullable(),
       location: s(0),
       warranty: date,
-      notes: s(0, 5000),
       status: z.enum(["Trong kho", "Đang sử dụng", "Bảo trì", "Thanh lý"]),
-      specs: z
-        .object({
-          cpu: s(0),
-          ram: s(0),
-          storage: s(0),
-          os: s(0),
-          health: z.number().min(0).max(100),
-        })
-        .optional(),
     })
     .strict(),
   software: z
@@ -77,9 +67,14 @@ const schemas = {
     .strict(),
 };
 
+function documentResponse({ access_level, ...row }) {
+  const [state, visibility] = access_level.split("_");
+  return { ...row, published: state === "published", visibility };
+}
+
 export async function assertDocument(client, user, id) {
   const { rows } = await client.query("SELECT * FROM documents WHERE id=$1", [id]);
-  const doc = rows[0];
+  const doc = rows[0] && documentResponse(rows[0]);
   assert(
     doc &&
       (user.role === "admin" ||
@@ -163,10 +158,17 @@ export function resourceRouter(pool) {
                 403,
                 "Chỉ sửa bản nháp do bạn tạo.",
               );
-              assert(!update || !previous.published, 403, "Bài đã công bố cần Admin chỉnh sửa.");
+              assert(
+                !update || !previous.access_level.startsWith("published_"),
+                403,
+                "Bài đã công bố cần Admin chỉnh sửa.",
+              );
               record.published = false;
               record.visibility = "internal";
             }
+            record.access_level = `${record.published ? "published" : "draft"}_${record.visibility}`;
+            delete record.published;
+            delete record.visibility;
             if (!update) record.author_id = req.user.id;
             record.updated_at = new Date();
           }
@@ -193,7 +195,6 @@ export function resourceRouter(pool) {
                 400,
                 "Tạo thiết bị trong kho trước khi cấp phát.",
               );
-            if (record.specs) record.specs = JSON.stringify(record.specs);
           }
           if (entity === "software" && update) {
             const used = Number(
@@ -209,7 +210,7 @@ export function resourceRouter(pool) {
           const keys = Object.keys(record);
           const values = Object.values(record);
           const sql = update
-            ? `UPDATE ${entity} SET ${keys.map((k, i) => `${k}=$${i + 2}`).join(",")}${entity === "assets" ? ",version=version+1" : ""} WHERE id=$1 RETURNING *`
+            ? `UPDATE ${entity} SET ${keys.map((k, i) => `${k}=$${i + 2}`).join(",")}${entity === "assets" ? `,updated_at=${nextUpdatedAt}` : ""} WHERE id=$1 RETURNING *`
             : `INSERT INTO ${entity}(id,${keys.join(",")}) VALUES($1,${keys.map((_, i) => `$${i + 2}`).join(",")}) RETURNING *`;
           const { rows } = await client.query(sql, [recordId, ...values]);
           await audit(client, req.user.id, update ? "update" : "create", entity, recordId, {
@@ -220,7 +221,11 @@ export function resourceRouter(pool) {
                 .map((key) => [key, { from: previous?.[key] ?? null, to: record[key] }]),
             ),
           });
-          return entity === "users" ? publicUser(rows[0]) : rows[0];
+          const saved = rows[0];
+          if (entity === "users") return publicUser(saved);
+          if (entity === "documents") return documentResponse(saved);
+          if (entity === "assets") return { ...saved, version: saved.updated_at.getTime() };
+          return saved;
         });
         res.status(update ? 200 : 201).json(result);
       });
@@ -254,7 +259,11 @@ export function resourceRouter(pool) {
         await client.query("SELECT * FROM assets WHERE id=$1 FOR UPDATE", [req.params.id])
       ).rows[0];
       assert(asset, 404, "Không tìm thấy tài sản.");
-      assert(asset.version === input.version, 409, "Tài sản vừa thay đổi, hãy tải lại.");
+      assert(
+        asset.updated_at.getTime() === input.version,
+        409,
+        "Tài sản vừa thay đổi, hãy tải lại.",
+      );
       const current = (
         await client.query(
           "SELECT * FROM asset_assignments WHERE asset_id=$1 AND ended_at IS NULL FOR UPDATE",
@@ -296,7 +305,7 @@ export function resourceRouter(pool) {
           ],
         );
       }
-      await client.query("UPDATE assets SET status=$2,version=version+1 WHERE id=$1", [
+      await client.query(`UPDATE assets SET status=$2,updated_at=${nextUpdatedAt} WHERE id=$1`, [
         asset.id,
         input.action === "return"
           ? asset.status === "Bảo trì"
@@ -398,7 +407,7 @@ export function resourceRouter(pool) {
         req.params.id,
       ])
     ).rows;
-    res.json({ ...rows[0], attachments });
+    res.json({ ...documentResponse(rows[0]), attachments });
   });
 
   router.post(
@@ -416,7 +425,7 @@ export function resourceRouter(pool) {
       const attachment = await transaction(pool, async (client) => {
         if (entity === "tickets") {
           const t = await getTicket(client, req.user, id, true);
-          assert(t.status !== "Đã đóng", 409, "Ticket đã đóng.");
+          assert(!["Đã đóng", "Đã thu hồi"].includes(t.status), 409, "Ticket đã đóng hoặc đã thu hồi.");
         } else {
           const d = await assertDocument(client, req.user, id);
           assert(

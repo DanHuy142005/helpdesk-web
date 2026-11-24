@@ -89,6 +89,20 @@ cổng web/API trống tiếp theo nếu cần. Khi đặt `API_PORT` trong `.en
 PostgreSQL portable mặc định hỗ trợ Windows x64; trên Windows ARM64 hãy dùng
 PostgreSQL cài riêng và cấu hình `DATABASE_URL`.
 
+### Chia sẻ web qua Cloudflare bằng một cửa sổ
+
+1. Cài `cloudflared` nếu máy chưa có. Nếu đang chạy web và tunnel ở các
+   cửa sổ riêng, dừng các phiên cũ trước khi chuyển sang cách này.
+2. Trong File Explorer, mở thư mục dự án rồi nhấp đúp `run-cloudflare.bat`.
+   Bộ chạy dùng cổng còn trống và tự thêm địa chỉ mới vào cấu hình của web và API.
+3. Đợi dòng `Cloudflare URL: https://…trycloudflare.com`, sao chép link và mở
+   trong trình duyệt. Giữ cửa sổ đang chạy trong lúc sử dụng.
+4. Nhấn **Ctrl+C** trong cửa sổ đó để dừng web và tunnel. Lần sau chỉ cần mở
+   lại `run-cloudflare.bat` và dùng link mới.
+
+Link Quick Tunnel truy cập được từ Internet. Dùng tài khoản và dữ liệu thử
+khi chia sẻ vì chức năng quên mật khẩu hiện dùng OTP cố định.
+
 ## 2. Dùng PostgreSQL cài riêng hoặc Docker
 
 Phương án này thay thế PostgreSQL portable. Không cần thực hiện nếu dùng mục 1.
@@ -232,7 +246,7 @@ là nội dung người xử lý nhập tại hộp xác nhận, không tự t�
   được người gửi xác nhận đóng trước khi bị khóa/đổi vai trò.
 - **Phòng ban:** thêm, nhấp thẻ để sửa/xóa; số nhân viên, tài sản và Ticket được
   tính từ quan hệ thực tế. Chỉ xóa khi không còn dữ liệu tham chiếu.
-- **Tài sản:** thêm/sửa serial, loại, vị trí, bảo hành, cấu hình, tình trạng.
+- **Tài sản:** thêm/sửa serial, loại, vị trí, bảo hành và tình trạng.
   Nhấp hàng để cấp phát, thu hồi, điều chuyển và xem lịch sử. Một thiết bị chỉ
   có một cấp phát hiệu lực; điều chuyển kết thúc cấp phát cũ trong transaction.
   Thiết bị đang bảo trì/thanh lý không được cấp phát.
@@ -287,6 +301,35 @@ Restore sẽ từ chối database đã có dữ liệu. Toàn bộ restore nằm
 transaction, khôi phục cả binary attachments và sequence mã Ticket. Với hệ
 thống lớn hơn, có thể dùng công cụ PostgreSQL `pg_dump`/`pg_restore` do quản trị
 database vận hành thay cho backup cấp ứng dụng.
+
+Migration `006-simplify-catalog-schema.sql` dùng `updated_at` để kiểm tra sửa đồng
+thời ở tài sản và chính sách Ticket. Ghi chú và cấu hình tài sản cũ nằm trong
+`audit_log`, với `action = 'archive-asset-details'` và `entity_id` là mã tài sản.
+Tài liệu dùng một cột `access_level` lưu cả trạng thái công bố và phạm vi đọc.
+
+### Chuyển database lên Supabase
+
+Các bước dưới đây dùng project Supabase riêng. Với project đang liên kết
+Lovable, thực hiện thay đổi schema qua Lovable.
+
+1. Tạo một project Supabase thử nghiệm với database rỗng. Giữ Express làm API
+   và giữ luồng đăng nhập hiện tại. Tắt **Data API** nếu toàn bộ truy vấn của
+   ứng dụng vẫn đi qua Express. [Bảo vệ Data API](https://supabase.com/docs/guides/api/securing-your-api)
+2. Khi bản localhost đã chạy ổn với schema mới, đặt `BACKUP_PASSPHRASE` và chạy
+   `npm run db:backup`. Giữ bản sao mã hóa trên máy và dùng cùng mật khẩu để
+   khôi phục. Bản sao lưu chứa dữ liệu người dùng và tệp đính kèm.
+3. Trong Supabase Dashboard, mở **Connect** và lấy chuỗi kết nối PostgreSQL
+   phù hợp. Dùng kết nối trực tiếp khi máy có IPv6 hoặc **Session pooler** trên
+   mạng chỉ có IPv4. Cấu hình TLS theo Dashboard và đặt `DATABASE_URL` ở môi
+   trường của backend. [Kết nối PostgreSQL](https://supabase.com/docs/guides/database/connecting-to-postgres)
+4. Với `DATABASE_URL` đã trỏ đúng project thử, chạy `npm run db:migrate` rồi
+   `npm run db:restore -- <đường-dẫn-backup>`. Sau đó chạy backend và kiểm tra
+   số lượng bản ghi, đăng nhập, phân công Ticket, OTP, cấp phát, quyền đọc tài
+   liệu và tải tệp. Người dùng đăng nhập lại sau khi chuyển vì bản sao lưu cấp
+   ứng dụng không mang theo phiên đăng nhập.
+5. Khi bản thử chạy ổn, lên lịch tạm dừng ghi trên bản cũ, tạo bản sao cuối rồi
+   khôi phục vào database đích rỗng. Chuyển `DATABASE_URL` của backend sau khi
+   đối chiếu dữ liệu. Giữ bản localhost và bản sao để có thể quay lại.
 
 ## 6. Kiểm tra trên máy phát triển
 

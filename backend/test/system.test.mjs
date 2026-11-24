@@ -505,6 +505,10 @@ test("Migration upgrades old conversations without losing internal notes and is 
         "INSERT INTO documents(id,title,category,content,visibility,author_id) VALUES($1,'Quy trình xử lý sự cố CNTT','Quy trình',$2,'public',$3)",
         [id, content, accounts.technician.id],
       );
+    await legacy.query(
+      "INSERT INTO assets(id,name,type,notes,specs) VALUES('LEGACY-ASSET','Thiết bị cũ','Laptop',$1,$2)",
+      ["Ghi chú trước migration", { cpu: "CPU cũ" }],
+    );
     await migrate(legacy);
     await migrate(legacy);
     assert.match(
@@ -520,7 +524,19 @@ test("Migration upgrades old conversations without losing internal notes and is 
     assert.equal((await legacy.query("SELECT * FROM ticket_messages")).rows.length, 1);
     assert.equal((await legacy.query("SELECT * FROM ticket_comments")).rows.length, 2);
     assert.equal((await legacy.query("SELECT status FROM tickets")).rows[0].status, "Đang xử lý");
-    assert.equal((await legacy.query("SELECT * FROM schema_versions")).rows.length, 5);
+    const archive = await legacy.query(
+      "SELECT details FROM audit_log WHERE action='archive-asset-details' AND entity_id='LEGACY-ASSET'",
+    );
+    assert.deepEqual(
+      archive.rows.map((row) => row.details),
+      [{ notes: "Ghi chú trước migration", specs: { cpu: "CPU cũ" } }],
+    );
+    assert.equal(
+      (await legacy.query("SELECT access_level FROM documents WHERE id=$1", [oldGuideId])).rows[0]
+        .access_level,
+      "draft_public",
+    );
+    assert.equal((await legacy.query("SELECT * FROM schema_versions")).rows.length, 7);
   } finally {
     await legacy.end();
     await adminPool.query(`DROP SCHEMA ${legacySchema} CASCADE`);
@@ -547,6 +563,139 @@ test("Attachment type checks and download ownership", async () => {
       contentType: "image/png",
     })
     .expect(400);
+});
+
+test("Requester can withdraw a new ticket once and cannot withdraw a ticket returned to the queue", async () => {
+  const ticket = await create();
+  const path = `/tickets/${ticket.id}/actions`;
+  const withdraw = { action: "withdraw", version: ticket.version };
+  await call(accounts.user2, "post", path, withdraw).expect(404);
+  await call(accounts.admin, "post", path, withdraw).expect(403);
+  const withdrawn = (await call(accounts.user, "post", path, withdraw).expect(200)).body;
+  assert.equal(withdrawn.status, "Đã thu hồi");
+  assert.equal(withdrawn.assignee_id, null);
+  await call(accounts.user, "post", path, { ...withdraw, version: withdrawn.version }).expect(409);
+  await call(accounts.admin, "post", path, {
+    action: "assign",
+    version: withdrawn.version,
+    assigneeId: accounts.helpdesk.id,
+    priority: "Trung bình",
+    category: "Phần cứng",
+    assetId: null,
+  }).expect(409);
+  await accounts.user.agent
+    .post(`/api/tickets/${ticket.id}/attachments`)
+    .set("X-CSRF-Token", accounts.user.csrf)
+    .attach("file", Buffer.from("withdrawn"), { filename: "test.txt", contentType: "text/plain" })
+    .expect(409);
+  const detail = (await accounts.user.agent.get(`/api/tickets/${ticket.id}`).expect(200)).body;
+  assert.equal(
+    detail.events.filter((event) => event.action === "withdraw" && event.to_status === "Đã thu hồi")
+      .length,
+    1,
+  );
+  const notices = (await accounts.admin.agent.get("/api/workspace").expect(200)).body.notifications;
+  assert(
+    notices.some(
+      (notice) => notice.ticket_id === ticket.id && notice.message.includes("Đã thu hồi"),
+    ),
+  );
+
+  let previouslyAssigned = await act(accounts.admin, await create(), "assign", {
+    assigneeId: accounts.technician.id,
+  });
+  const tryWithdraw = () =>
+    call(accounts.user, "post", `/tickets/${previouslyAssigned.id}/actions`, {
+      action: "withdraw",
+      version: previouslyAssigned.version,
+    }).expect(409);
+  await tryWithdraw();
+  previouslyAssigned = await act(accounts.technician, previouslyAssigned, "return-to-helpdesk", {
+    note: "Chuyển lại hàng đợi để Helpdesk tiếp tục hỗ trợ.",
+  });
+  assert.equal(previouslyAssigned.status, "Mới");
+  assert.equal(previouslyAssigned.assignee_id, null);
+  await tryWithdraw();
+});
+
+test("Withdrawal and Admin assignment cannot both succeed on the same version", async () => {
+  const ticket = await create();
+  const path = `/tickets/${ticket.id}/actions`;
+  const [withdrawn, assigned] = await Promise.all([
+    call(accounts.user, "post", path, { action: "withdraw", version: ticket.version }),
+    call(accounts.admin, "post", path, {
+      action: "assign",
+      version: ticket.version,
+      assigneeId: accounts.helpdesk.id,
+      priority: "Trung bình",
+      category: "Phần cứng",
+      assetId: null,
+    }),
+  ]);
+  assert.deepEqual([withdrawn.status, assigned.status].sort(), [200, 409]);
+  const detail = (await accounts.user.agent.get(`/api/tickets/${ticket.id}`).expect(200)).body;
+  assert.equal(detail.status, withdrawn.status === 200 ? "Đã thu hồi" : "Đang xử lý");
+  assert.equal(
+    detail.events.filter((event) => ["assign", "withdraw"].includes(event.action)).length,
+    1,
+  );
+});
+
+test("Only Admin can delete a closed ticket and its dependent records; audit survives", async () => {
+  let ticket = await create();
+  const path = `/tickets/${ticket.id}`;
+  await call(accounts.admin, "delete", path, { version: ticket.version }).expect(409);
+  await call(accounts.admin, "delete", path, { version: 0 }).expect(400);
+  const file = await accounts.user.agent
+    .post(`/api${path}/attachments`)
+    .set("X-CSRF-Token", accounts.user.csrf)
+    .attach("file", Buffer.from("file to delete"), {
+      filename: "test.txt",
+      contentType: "text/plain",
+    })
+    .expect(201);
+  ticket = await act(accounts.admin, ticket, "assign", { assigneeId: accounts.technician.id });
+  await call(accounts.user, "post", `${path}/messages`, { body: "Hội thoại cần được xóa." }).expect(
+    201,
+  );
+  await call(accounts.technician, "post", `${path}/comments`, {
+    body: "Ghi chú nội bộ.",
+    internal: true,
+  }).expect(201);
+  ticket = await act(accounts.technician, ticket, "resolve", {
+    note: "Đã sửa lỗi và xác nhận thiết bị hoạt động ổn định.",
+  });
+  await call(accounts.admin, "delete", path, { version: ticket.version }).expect(409);
+  ticket = await act(accounts.user, ticket, "confirm");
+  for (const account of [accounts.user, accounts.helpdesk, accounts.technician]) {
+    await call(account, "delete", path, { version: ticket.version }).expect(403);
+  }
+  await call(accounts.admin, "delete", path, { version: ticket.version - 1 }).expect(409);
+  await call(accounts.admin, "delete", path, { version: ticket.version }).expect(200);
+  await accounts.admin.agent.get(`/api${path}`).expect(404);
+  await accounts.user.agent.get(`/api${path}`).expect(404);
+  await accounts.admin.agent.get(`/api/attachments/${file.body.id}`).expect(404);
+  for (const table of [
+    "notifications",
+    "attachments",
+    "ticket_comments",
+    "ticket_messages",
+    "ticket_events",
+  ]) {
+    assert.equal(
+      (await pool.query(`SELECT 1 FROM ${table} WHERE ticket_id=$1`, [ticket.id])).rowCount,
+      0,
+    );
+  }
+  const log = (
+    await pool.query(
+      "SELECT actor_id, details FROM audit_log WHERE action='delete' AND entity='tickets' AND entity_id=$1",
+      [ticket.id],
+    )
+  ).rows;
+  assert.equal(log.length, 1);
+  assert.equal(log[0].actor_id, accounts.admin.id);
+  assert.equal(log[0].details.status, "Đã đóng");
 });
 test("Multiple screenshots are created atomically with the ticket and follow ticket access permissions", async () => {
   const png = Buffer.from(
@@ -661,16 +810,19 @@ test("Asset uniqueness and atomic assign, transfer, return, including concurrent
     serial: "SN-QA",
     location: "Kho",
     warranty: "2028-07-15",
-    notes: "",
     status: "Trong kho",
   };
-  await call(accounts.admin, "post", "/assets", body)
+  const created = await call(accounts.admin, "post", "/assets", body)
     .expect(201)
     .expect((r) => assert.equal(r.body.warranty, "2028-07-15"));
+  const currentAsset = async () =>
+    (await accounts.admin.agent.get("/api/workspace").expect(200)).body.assets.find(
+      (asset) => asset.id === body.id,
+    );
   await call(accounts.admin, "post", "/assets", body).expect(409);
   const payload = {
     action: "assign",
-    version: 1,
+    version: created.body.version,
     userId: accounts.user.id,
     reason: "Cấp cho công việc kiểm thử",
     condition: "Hoạt động tốt",
@@ -682,18 +834,21 @@ test("Asset uniqueness and atomic assign, transfer, return, including concurrent
   await call(accounts.admin, "post", "/assets/AS-QA/assignments", {
     ...payload,
     action: "transfer",
-    version: 2,
+    version: (await currentAsset()).version,
     userId: accounts.user2.id,
   }).expect(201);
   const history = await accounts.admin.agent.get("/api/assets/AS-QA/history").expect(200);
   assert.equal(history.body.length, 2);
   assert.equal(history.body.filter((a) => !a.ended_at).length, 1);
   await accounts.user.agent.get("/api/assets/AS-QA/history").expect(403);
-  await call(accounts.admin, "put", "/assets/AS-QA", { ...body, status: "Bảo trì" }).expect(200);
+  const updated = await call(accounts.admin, "put", "/assets/AS-QA", {
+    ...body,
+    status: "Bảo trì",
+  }).expect(200);
   await call(accounts.admin, "post", "/assets/AS-QA/assignments", {
     ...payload,
     action: "return",
-    version: 4,
+    version: updated.body.version,
   }).expect(201);
   assert.equal(
     (await pool.query("SELECT status FROM assets WHERE id='AS-QA'")).rows[0].status,
@@ -1291,6 +1446,16 @@ test("Signed-in password change validates both passwords and requires signing in
 });
 
 test("Encrypted backup restores all records and attachments into an empty schema", async () => {
+  let deleted = await act(accounts.admin, await create(), "assign", {
+    assigneeId: accounts.helpdesk.id,
+  });
+  deleted = await act(accounts.helpdesk, deleted, "resolve", {
+    note: "Đã hoàn tất kiểm tra trước khi sao lưu.",
+  });
+  deleted = await act(accounts.user, deleted, "confirm");
+  await call(accounts.admin, "delete", `/tickets/${deleted.id}`, {
+    version: deleted.version,
+  }).expect(200);
   const passphrase = randomBytes(24).toString("hex");
   const backup = await createBackup(pool, passphrase);
   assert(!backup.data.includes("nexdesk.local"));
@@ -1303,6 +1468,8 @@ test("Encrypted backup restores all records and attachments into an empty schema
   try {
     await migrate(restored);
     const counts = await restoreBackup(restored, backup, passphrase);
+    const next = (await restored.query("SELECT nextval('ticket_number') AS number")).rows[0].number;
+    assert(BigInt(next) > BigInt(deleted.id.slice(3)));
     assert(counts.tickets > 7);
     assert(counts.attachments > 0);
     for (const table of [

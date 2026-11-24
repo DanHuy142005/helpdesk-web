@@ -60,9 +60,7 @@ export interface ApiAsset {
   serial: string | null;
   location: string;
   warranty: string | null;
-  notes: string;
   status: "Trong kho" | "Đang sử dụng" | "Bảo trì" | "Thanh lý";
-  specs: { cpu?: string; ram?: string; storage?: string; os?: string; health?: number };
   owner: string | null;
   owner_id: string | null;
   department: string | null;

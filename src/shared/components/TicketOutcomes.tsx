@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Trash2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -16,6 +16,76 @@ import { useWrite } from "../api/client";
 import type { ApiTicket } from "../api/types";
 import { Field } from "./Field";
 import { AutoCloseNotice } from "./TicketSla";
+
+export function TicketLifecycleAction({
+  ticket,
+  action,
+}: {
+  ticket: ApiTicket;
+  action: "withdraw" | "delete";
+}) {
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+  const write = useWrite();
+  const actions = useActions();
+  const deleting = action === "delete";
+  const label = deleting ? "Xóa Ticket" : "Thu hồi Ticket";
+  return (
+    <>
+      <Button
+        type="button"
+        variant={deleting ? "destructive" : "outline"}
+        onClick={() => setOpen(true)}
+      >
+        {deleting ? <Trash2 /> : <Undo2 />} {label}
+      </Button>
+      <AlertDialog
+        open={open}
+        onOpenChange={(value) => {
+          if (!pending) setOpen(value);
+        }}
+      >
+        <AlertDialogContent className="w-[calc(100%-2rem)] rounded-[20px]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {label} {ticket.id}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleting
+                ? "Ticket, hội thoại và tệp đính kèm sẽ bị xóa vĩnh viễn. Nhật ký quản trị sẽ ghi lại thao tác xóa."
+                : "Yêu cầu sẽ rời hàng đợi phân công và vẫn xuất hiện trong lịch sử của bạn với trạng thái Đã thu hồi."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>Quay lại</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={pending}
+              onClick={async (event) => {
+                event.preventDefault();
+                setPending(true);
+                const path = `/tickets/${encodeURIComponent(ticket.id)}`;
+                try {
+                  if (deleting) await write(path, { version: ticket.version }, "DELETE");
+                  else await write(`${path}/actions`, { action, version: ticket.version });
+                  setOpen(false);
+                  actions.notify(
+                    deleting ? "Đã xóa Ticket" : "Đã thu hồi Ticket",
+                    `Yêu cầu ${ticket.id} đã được ${deleting ? "xóa" : "thu hồi"}.`,
+                  );
+                } catch {
+                } finally {
+                  setPending(false);
+                }
+              }}
+            >
+              {pending ? "Đang xử lý…" : deleting ? "Xóa vĩnh viễn" : "Xác nhận thu hồi"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
 
 export function ResolveTicketButton({ ticket }: { ticket: ApiTicket }) {
   const [open, setOpen] = useState(false),

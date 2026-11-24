@@ -1,4 +1,4 @@
-import { randomBytes, createCipheriv, createDecipheriv, scryptSync } from "node:crypto";
+import { randomBytes, randomUUID, createCipheriv, createDecipheriv, scryptSync } from "node:crypto";
 import { transaction } from "./db.mjs";
 const tables = [
   "departments",
@@ -61,9 +61,32 @@ export async function restoreBackup(pool, backup, passphrase) {
     ),
   );
   // Older backups stored public conversations in ticket_comments.
-  snapshot.ticket_policy ||= [
-    { id: true, auto_close_enabled: false, auto_close_minutes: 1440, version: 1 },
-  ];
+  snapshot.ticket_policy ||= [{ id: true, auto_close_enabled: false, auto_close_minutes: 1440 }];
+  for (const policy of snapshot.ticket_policy) {
+    delete policy.version;
+    delete policy.updated_by;
+  }
+  for (const asset of snapshot.assets || []) {
+    if (asset.notes || (Object.hasOwn(asset, "specs") && JSON.stringify(asset.specs) !== "{}")) {
+      snapshot.audit_log.push({
+        id: randomUUID(),
+        action: "archive-asset-details",
+        entity: "assets",
+        entity_id: asset.id,
+        details: { notes: asset.notes ?? "", specs: asset.specs === undefined ? {} : asset.specs },
+      });
+    }
+    delete asset.notes;
+    delete asset.specs;
+    delete asset.version;
+  }
+  for (const document of snapshot.documents || []) {
+    if (Object.hasOwn(document, "published") && Object.hasOwn(document, "visibility")) {
+      document.access_level ??= `${document.published ? "published" : "draft"}_${document.visibility}`;
+      delete document.published;
+      delete document.visibility;
+    }
+  }
   for (const ticket of snapshot.tickets || []) {
     ticket.requested_priority ??= ticket.priority;
     ticket.requested_category ??= ticket.category;
@@ -82,7 +105,7 @@ export async function restoreBackup(pool, backup, passphrase) {
   await transaction(pool, async (client) => {
     await client.query("LOCK TABLE " + tables.join(",") + " IN ACCESS EXCLUSIVE MODE");
     await client.query(
-      "DELETE FROM ticket_policy WHERE id=true AND version=1 AND updated_by IS NULL AND auto_close_enabled=false AND auto_close_minutes=1440",
+      "DELETE FROM ticket_policy WHERE id=true AND auto_close_enabled=false AND auto_close_minutes=1440",
     );
     for (const table of tables) {
       if (Number((await client.query(`SELECT count(*) FROM ${table}`)).rows[0].count))
@@ -114,9 +137,11 @@ export async function restoreBackup(pool, backup, passphrase) {
         );
       }
     }
-    await client.query(
-      "SELECT setval('ticket_number',GREATEST(10000,COALESCE(max(substring(id from 4)::bigint),10000))) FROM tickets",
-    );
+    // Keep codes recorded in the deletion audit from being issued again after restore.
+    await client.query(`SELECT setval('ticket_number', GREATEST(10000,
+      (SELECT max(substring(id from 4)::bigint) FROM tickets),
+      (SELECT max(substring(entity_id from 4)::bigint) FROM audit_log
+       WHERE entity='tickets' AND action='delete' AND entity_id ~ '^TK-[0-9]+$')))`);
     await client.query(
       "UPDATE tickets SET status='Đang xử lý' WHERE status='Đã chuyển' AND assignee_id IS NOT NULL",
     );

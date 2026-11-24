@@ -12,6 +12,7 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 export default defineConfig({
   vite: {
     server: {
+      allowedHosts: ["idol-locked-giant-pda.trycloudflare.com"],
       proxy: {
         "/api": {
           target: `http://127.0.0.1:${process.env["API_PORT"] || "3001"}`,

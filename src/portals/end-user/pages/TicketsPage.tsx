@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Button } from "@/shared";
 import {
   DataTable,
+  isFinalTicketStatus,
   PageHeader,
   PillTabs,
   PriorityBadge,
@@ -54,18 +55,25 @@ const columns: Column<MyTicket>[] = [
     key: "completion",
     header: "Xác nhận hoàn thành",
     align: "right",
-    cell: (ticket) => <TicketCompletionButton ticket={ticket} />,
+    cell: (ticket) =>
+      ticket.status === "Đã thu hồi" ? "—" : <TicketCompletionButton ticket={ticket} />,
   },
 ];
 
-const open = (t: MyTicket) => t.progress < 100;
+const open = (t: MyTicket) => !isFinalTicketStatus(t.status);
 
 export function EndUserTicketsPage() {
   const { myTickets } = usePortalData();
   const actions = useActions();
   const [tab, setTab] = useState("all");
   const rows = myTickets.filter((t) =>
-    tab === "open" ? open(t) : tab === "done" ? !open(t) : true,
+    tab === "open"
+      ? open(t)
+      : tab === "done"
+        ? t.status === "Đã đóng"
+        : tab === "withdrawn"
+          ? t.status === "Đã thu hồi"
+          : true,
   );
 
   return (
@@ -101,7 +109,12 @@ export function EndUserTicketsPage() {
                 {
                   value: "done",
                   label: "Đã xong",
-                  count: myTickets.filter((t) => !open(t)).length,
+                  count: myTickets.filter((t) => t.status === "Đã đóng").length,
+                },
+                {
+                  value: "withdrawn",
+                  label: "Đã thu hồi",
+                  count: myTickets.filter((t) => t.status === "Đã thu hồi").length,
                 },
               ]}
             />

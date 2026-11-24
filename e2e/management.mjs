@@ -59,8 +59,6 @@ try {
   await page.getByLabel("Mã tài sản", { exact: true }).fill("AS-" + suffix);
   await page.getByLabel("Tên tài sản", { exact: true }).fill("Laptop QA " + suffix);
   await page.getByLabel("Vị trí", { exact: true }).fill("Phòng QA");
-  await page.getByLabel("CPU", { exact: true }).fill("Core i5");
-  await page.getByLabel("Tình trạng kỹ thuật (%)", { exact: true }).fill("90");
   await save();
   await page
     .getByRole("row")

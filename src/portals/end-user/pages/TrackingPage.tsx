@@ -14,6 +14,7 @@ import {
   AutoCloseNotice,
   api,
   cn,
+  isFinalTicketStatus,
   useActions,
   usePortalData,
   type TicketDetail,
@@ -83,7 +84,9 @@ export function EndUserTrackingPage() {
                       <StatusBadge status={ticket.status} />
                       <PriorityBadge priority={ticket.priority} />
                       <span className="text-xs text-muted-foreground">
-                        {ticket.assignee || "Chờ Admin phân công người xử lý"}
+                        {ticket.status === "Đã thu hồi"
+                          ? "Yêu cầu đã rời hàng đợi phân công"
+                          : ticket.assignee || "Chờ Admin phân công người xử lý"}
                       </span>
                     </div>
                   </div>
@@ -91,58 +94,60 @@ export function EndUserTrackingPage() {
                     Xem thông tin yêu cầu
                   </Button>
                 </div>
-                <ol aria-label="Tiến trình yêu cầu" className="mt-7 grid gap-5 sm:grid-cols-5">
-                  {[
-                    "Đã gửi yêu cầu",
-                    "Admin phân công",
-                    "Đang xử lý",
-                    "Chờ bạn xác nhận",
-                    "Hoàn thành",
-                  ].map((label, index) => (
-                    <li
-                      key={label}
-                      aria-current={index === current ? "step" : undefined}
-                      className="relative"
-                    >
-                      {index < 4 && (
+                {ticket.status !== "Đã thu hồi" && (
+                  <ol aria-label="Tiến trình yêu cầu" className="mt-7 grid gap-5 sm:grid-cols-5">
+                    {[
+                      "Đã gửi yêu cầu",
+                      "Admin phân công",
+                      "Đang xử lý",
+                      "Chờ bạn xác nhận",
+                      "Hoàn thành",
+                    ].map((label, index) => (
+                      <li
+                        key={label}
+                        aria-current={index === current ? "step" : undefined}
+                        className="relative"
+                      >
+                        {index < 4 && (
+                          <span
+                            className={cn(
+                              "absolute left-10 top-5 hidden h-0.5 w-[calc(100%-1rem)] sm:block",
+                              index < current ? "bg-brand" : "bg-border",
+                            )}
+                          />
+                        )}
                         <span
                           className={cn(
-                            "absolute left-10 top-5 hidden h-0.5 w-[calc(100%-1rem)] sm:block",
-                            index < current ? "bg-brand" : "bg-border",
+                            "relative grid size-10 place-items-center rounded-full text-sm font-bold",
+                            index < current
+                              ? "bg-brand text-white"
+                              : index === current
+                                ? "border-2 border-primary bg-card text-primary ring-4 ring-primary/15"
+                                : "bg-surface text-muted-foreground",
                           )}
-                        />
-                      )}
-                      <span
-                        className={cn(
-                          "relative grid size-10 place-items-center rounded-full text-sm font-bold",
-                          index < current
-                            ? "bg-brand text-white"
-                            : index === current
-                              ? "border-2 border-primary bg-card text-primary ring-4 ring-primary/15"
-                              : "bg-surface text-muted-foreground",
-                        )}
-                      >
-                        {index < current ? <Check className="size-5" /> : index + 1}
-                      </span>
-                      <p
-                        className={cn(
-                          "mt-3 text-sm font-semibold",
-                          index > current && "text-muted-foreground",
-                        )}
-                      >
-                        {label}
-                      </p>
-                    </li>
-                  ))}
-                </ol>
+                        >
+                          {index < current ? <Check className="size-5" /> : index + 1}
+                        </span>
+                        <p
+                          className={cn(
+                            "mt-3 text-sm font-semibold",
+                            index > current && "text-muted-foreground",
+                          )}
+                        >
+                          {label}
+                        </p>
+                      </li>
+                    ))}
+                  </ol>
+                )}
               </SectionCard>
               <TicketResultReview ticket={ticket} />
               {ticket.closed_automatically && <AutoCloseNotice ticket={ticket} />}
-              <TicketConversation ticket={ticket} expanded />
-              {(ticket.attachments.length > 0 || ticket.status !== "Đã đóng") && (
+              {ticket.status !== "Đã thu hồi" && <TicketConversation ticket={ticket} expanded />}
+              {(ticket.attachments.length > 0 || !isFinalTicketStatus(ticket.status)) && (
                 <SectionCard>
                   <AttachmentGallery files={ticket.attachments} />
-                  {ticket.status !== "Đã đóng" && (
+                  {!isFinalTicketStatus(ticket.status) && (
                     <div className={ticket.attachments.length ? "mt-5" : ""}>
                       <TicketAttachmentUpload ticketId={ticket.id} />
                     </div>

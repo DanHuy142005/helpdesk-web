@@ -9,7 +9,7 @@ import type { TicketDetail } from "../api/types";
 import { StatusBadge, PriorityBadge } from "./StatusBadge";
 import { AttachmentGallery } from "./Attachments";
 import { TicketHistory } from "./TicketHistory";
-import { ReturnToHelpdesk } from "./TicketOutcomes";
+import { ReturnToHelpdesk, TicketLifecycleAction } from "./TicketOutcomes";
 
 export function TicketDetailPanel({ id }: { id: string }) {
   const { data: workspace } = useWorkspace(),
@@ -33,6 +33,15 @@ export function TicketDetailPanel({ id }: { id: string }) {
   const user = workspace.user,
     owner = ticket.assignee_id === user.id;
   const staff = ["helpdesk", "technician"].includes(user.role);
+  const canWithdraw =
+    user.role === "end-user" &&
+    ticket.requester_id === user.id &&
+    ticket.status === "Mới" &&
+    !ticket.assignee_id &&
+    !ticket.assigned_by &&
+    !ticket.accepted_at &&
+    !ticket.queue_role;
+  const canDelete = user.role === "admin" && ticket.status === "Đã đóng";
   return (
     <div className="space-y-5">
       <SlaWarning ticket={ticket} />
@@ -50,9 +59,11 @@ export function TicketDetailPanel({ id }: { id: string }) {
         <p className="text-sm text-muted-foreground">
           {ticket.requester} · {ticket.department} · Phụ trách:{" "}
           {ticket.assignee ||
-            (ticket.queue_role === "helpdesk"
-              ? "Chờ Admin phân công Helpdesk"
-              : "Chờ Admin phân công")}
+            (ticket.status === "Đã thu hồi"
+              ? "—"
+              : ticket.queue_role === "helpdesk"
+                ? "Chờ Admin phân công Helpdesk"
+                : "Chờ Admin phân công")}
         </p>
         <p className="text-xs text-muted-foreground">
           Ngày gửi: {new Date(ticket.created_at).toLocaleString("vi-VN")}
@@ -72,6 +83,8 @@ export function TicketDetailPanel({ id }: { id: string }) {
           </div>
         )}
       </section>
+      {canWithdraw && <TicketLifecycleAction ticket={ticket} action="withdraw" />}
+      {canDelete && <TicketLifecycleAction ticket={ticket} action="delete" />}
       <TicketClassification key={ticket.id + ticket.version} ticket={ticket} />
       {user.role === "technician" && owner && (
         <>

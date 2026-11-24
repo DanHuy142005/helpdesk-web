@@ -50,21 +50,8 @@ export async function seed(pool, { password, accountsFile } = {}) {
       ["LT-002", "Lenovo ThinkPad T14", "Laptop", "Kho CNTT"],
     ]) {
       await client.query(
-        "INSERT INTO assets(id,name,type,serial,location,warranty,specs) VALUES($1,$2,$3,$4,$5,current_date+365,$6)",
-        [
-          id,
-          name,
-          type,
-          "SN-" + id,
-          location,
-          JSON.stringify({
-            cpu: "Intel Core i7",
-            ram: "16 GB",
-            storage: "512 GB SSD",
-            os: "Windows 11 Pro",
-            health: 90,
-          }),
-        ],
+        "INSERT INTO assets(id,name,type,serial,location,warranty) VALUES($1,$2,$3,$4,$5,current_date+365)",
+        [id, name, type, "SN-" + id, location],
       );
     }
     for (const [asset, recipient] of [
@@ -113,7 +100,7 @@ export async function seed(pool, { password, accountsFile } = {}) {
       ],
     ])
       await client.query(
-        "INSERT INTO documents(id,title,category,content,published,visibility,author_id) VALUES($1,$2,$3,$4,true,$5,$6)",
+        "INSERT INTO documents(id,title,category,content,access_level,author_id) VALUES($1,$2,$3,$4,'published_' || $5,$6)",
         [randomUUID(), title, category, content, "public", admin.id],
       );
     const examples = [

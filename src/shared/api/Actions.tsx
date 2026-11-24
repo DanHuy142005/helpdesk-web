@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { CheckCircle2 } from "lucide-react";
 import { isOverdue } from "../components/TicketSla";
+import { isOpenTicketStatus } from "../lib/ticket";
 
 type Panel = {
   type:
@@ -283,7 +284,6 @@ function EntityForm({
             ? w.software
             : w.documents;
   const record = { ...(rows.find((r) => r.id === id) || {}) } as unknown as Record<string, unknown>;
-  if (entity === "assets") Object.assign(record, record["specs"] || {});
   const fields: Record<Entity, FormField[]> = {
     users: [
       { key: "code", label: "Mã nhân viên" },
@@ -344,18 +344,6 @@ function EntityForm({
           label: value,
         })),
       },
-      { key: "notes", label: "Ghi chú", type: "textarea", optional: true },
-      ...["cpu", "ram", "storage", "os"].map((key) => ({
-        key,
-        label: (
-          { cpu: "CPU", ram: "RAM", storage: "Lưu trữ", os: "Hệ điều hành" } as Record<
-            string,
-            string
-          >
-        )[key]!,
-        optional: true,
-      })),
-      { key: "health", label: "Tình trạng kỹ thuật (%)", type: "number", optional: true },
     ],
     software: [
       { key: "name", label: "Tên phần mềm" },
@@ -403,12 +391,6 @@ function EntityForm({
                   : String(value || "");
           }
           if (entity === "users" && !body["department_id"]) body["department_id"] = null;
-          if (entity === "assets") {
-            body["specs"] = Object.fromEntries(
-              ["cpu", "ram", "storage", "os", "health"].map((key) => [key, body[key]]),
-            );
-            for (const key of ["cpu", "ram", "storage", "os", "health"]) delete body[key];
-          }
           if (entity === "documents" && w.user.role !== "admin") {
             body["published"] = false;
             body["visibility"] = "internal";
@@ -985,7 +967,7 @@ function UtilityPanel({ panel }: { panel: Panel }) {
     return (
       <ul className="space-y-2">
         {w.tickets
-          .filter((t) => !["Đã đóng", "Đã giải quyết"].includes(t.status))
+          .filter((t) => isOpenTicketStatus(t.status))
           .sort((a, b) => a.due_at.localeCompare(b.due_at))
           .map((t) => (
             <li key={t.id}>

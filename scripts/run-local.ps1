@@ -3,7 +3,9 @@
 param(
     [ValidateRange(1024, 65535)]
     [int]$Port = 5173,
-    [switch]$NoBrowser
+    [switch]$NoBrowser,
+    [switch]$Cloudflare,
+    [switch]$DatabaseViewer
 )
 
 $ErrorActionPreference = 'Stop'
@@ -143,11 +145,20 @@ try {
         Set-Content -LiteralPath $installMarker -Value $installIdentity -Encoding UTF8
     }
 
+    if ($DatabaseViewer) {
+        Write-Host 'Dang ket noi co so du lieu NexDesk...'
+        $viewerArguments = @((Join-Path $projectRoot 'scripts\database-viewer.mjs'))
+        if ($NoBrowser) { $viewerArguments += '--no-browser' }
+        & $nodeExecutable @viewerArguments
+        exit $LASTEXITCODE
+    }
+
     Write-Host ''
     Write-Host 'Dang khoi dong web. Neu cong ban dau ban, web se tu chon cong trong.'
     Write-Host 'Giu cua so nay mo khi dung web. Nhan Ctrl+C de dung.'
     $viteArguments = @((Join-Path $projectRoot 'scripts\dev.mjs'), '--port', "$Port")
-    if (-not $NoBrowser) { $viteArguments += '--open' }
+    if ($Cloudflare) { $viteArguments += '--cloudflare' }
+    if (-not $NoBrowser -and -not $Cloudflare) { $viteArguments += '--open' }
     & $nodeExecutable @viteArguments
     exit $LASTEXITCODE
 }
