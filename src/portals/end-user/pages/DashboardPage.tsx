@@ -4,10 +4,10 @@ import {
   ArrowRight,
   BookOpen,
   CheckCircle2,
+  ClipboardCheck,
   Clock3,
   Megaphone,
   PlusCircle,
-  Smile,
   Ticket,
 } from "lucide-react";
 
@@ -50,7 +50,6 @@ export function EndUserDashboardPage() {
           { value: String(stats.waiting), label: "Chờ phản hồi" },
           { value: String(stats.solved), label: "Đã giải quyết" },
           { value: String(stats.response + " phút"), label: "Thời gian chờ TB" },
-          { value: String(stats.rating), label: "Bạn đánh giá" },
         ]}
       />
 
@@ -77,9 +76,9 @@ export function EndUserDashboardPage() {
           hint="Dữ liệu hiện tại"
         />
         <KpiCard
-          label="Mức hài lòng"
-          value={stats.csat}
-          icon={Smile}
+          label="Chờ bạn xác nhận"
+          value={stats.resolved}
+          icon={ClipboardCheck}
           tone="warning"
           hint="Dữ liệu hiện tại"
         />

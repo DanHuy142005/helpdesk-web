@@ -387,6 +387,7 @@ try {
   await expect(
     userRow.getByRole("button", { name: "Xác nhận hoàn thành", exact: true }),
   ).toBeEnabled();
+  await expect(userRow.getByRole("button", { name: "Đánh giá", exact: true })).toHaveCount(0);
   await userRow.getByRole("button", { name: "Xác nhận hoàn thành", exact: true }).click();
   const complete = requester.getByRole("alertdialog", {
     name: "Xác nhận hoàn thành yêu cầu?",
@@ -397,6 +398,43 @@ try {
   await expect(
     userRow.getByRole("button", { name: "Đã xác nhận hoàn thành", exact: true }),
   ).toBeDisabled();
+  await requester.goto(origin + "/end-user/feedback");
+  const ticketChoice = requester.getByLabel("Chọn Ticket cần đánh giá", { exact: true });
+  await expect(ticketChoice).toHaveValue("");
+  await ticketChoice.selectOption(ticketId);
+  await expect(requester.getByRole("radiogroup", { name: "Số sao" })).toBeVisible();
+  await requester.goto(origin + "/end-user/tickets");
+  await userRow.getByRole("button", { name: "Đánh giá", exact: true }).click();
+  const ratingDialog = requester.getByRole("dialog", { name: `Đánh giá Ticket ${ticketId}` });
+  await expect(ratingDialog.getByText(title, { exact: true })).toBeVisible();
+  await expect(
+    ratingDialog.getByRole("button", { name: "Gửi đánh giá", exact: true }),
+  ).toBeDisabled();
+  const fourStars = ratingDialog.getByRole("radio", { name: "4 sao", exact: true });
+  await fourStars.focus();
+  await fourStars.press("Space");
+  await expect(fourStars).toBeChecked();
+  const feedback = "Xử lý kỹ và giải thích rõ nguyên nhân.";
+  await ratingDialog.getByLabel("Góp ý thêm", { exact: true }).fill(feedback);
+  const savedFeedback = requester.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/tickets/${ticketId}/feedback`) &&
+      response.request().method() === "POST",
+  );
+  await ratingDialog.getByRole("button", { name: "Gửi đánh giá", exact: true }).click();
+  assert.equal((await savedFeedback).status(), 201);
+  await expect(ratingDialog).toBeHidden();
+  await requester.reload();
+  await expect(userRow.getByRole("img", { name: "4 trên 5 sao", exact: true })).toBeVisible();
+  await expect(userRow.getByRole("button", { name: "Đánh giá", exact: true })).toHaveCount(0);
+  await requester.goto(origin + "/end-user/feedback");
+  const historyCard = requester.getByRole("listitem").filter({ hasText: feedback });
+  await expect(historyCard.getByText(ticketId, { exact: true })).toBeVisible();
+  await expect(historyCard.getByRole("img", { name: "4 trên 5 sao", exact: true })).toBeVisible();
+  results.push({
+    page: "End User can choose the ticket, rate from its row and see persisted feedback",
+    status: "PASS",
+  });
   await requester.goto(origin + "/end-user/tracking");
   await requester.getByLabel("Chọn yêu cầu cần theo dõi", { exact: true }).selectOption(ticketId);
   await expect(

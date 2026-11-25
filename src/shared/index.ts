@@ -20,6 +20,7 @@ export * from "./components/TicketConversation";
 export * from "./components/Attachments";
 export * from "./components/TicketHistory";
 export * from "./components/TicketOutcomes";
+export * from "./components/TicketFeedback";
 export * from "./components/IncidentWorkspace";
 export * from "./components/TicketSla";
 export * from "./charts/DonutChart";

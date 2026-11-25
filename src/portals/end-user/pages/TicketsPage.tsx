@@ -11,6 +11,7 @@ import {
   PillTabs,
   PriorityBadge,
   TicketCompletionButton,
+  TicketFeedbackAction,
   SectionCard,
   StatusBadge,
   UserAvatar,
@@ -57,6 +58,12 @@ const columns: Column<MyTicket>[] = [
     align: "right",
     cell: (ticket) =>
       ticket.status === "Đã thu hồi" ? "—" : <TicketCompletionButton ticket={ticket} />,
+  },
+  {
+    key: "feedback",
+    header: "Đánh giá",
+    align: "center",
+    cell: (ticket) => <TicketFeedbackAction ticket={ticket} />,
   },
 ];
 
