@@ -22,6 +22,7 @@ interface DataTableProps<T> {
   totalLabel?: string;
   onRowClick?: (row: T) => void;
   selectedKey?: string;
+  tableClassName?: string;
 }
 
 export function DataTable<T>({
@@ -34,6 +35,7 @@ export function DataTable<T>({
   totalLabel,
   onRowClick,
   selectedKey,
+  tableClassName,
 }: DataTableProps<T>) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -72,7 +74,12 @@ export function DataTable<T>({
       )}
 
       <div className="scrollbar-thin overflow-x-auto">
-        <table className="w-full min-w-[720px] border-separate border-spacing-0 text-sm">
+        <table
+          className={cn(
+            "w-full min-w-[720px] border-separate border-spacing-0 text-sm",
+            tableClassName,
+          )}
+        >
           <thead>
             <tr>
               {columns.map((c, i) => (

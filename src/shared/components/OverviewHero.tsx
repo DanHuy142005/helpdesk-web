@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { cn } from "@/lib/utils";
 
 export interface OverviewStat {
   value: string;
@@ -28,7 +29,12 @@ export function OverviewHero({
         {actions}
       </div>
 
-      <div className="relative mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+      <div
+        className={cn(
+          "relative mt-5 grid grid-cols-2 gap-3",
+          stats.length === 4 ? "md:grid-cols-4" : "md:grid-cols-3 xl:grid-cols-5",
+        )}
+      >
         {stats.map((s) => (
           <div key={s.label} className="glass-tile px-4 py-3.5">
             <div className="flex items-baseline gap-1.5">

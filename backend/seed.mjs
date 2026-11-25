@@ -2,8 +2,9 @@ import { randomUUID, randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { transaction } from "./db.mjs";
 import { hashPassword } from "./security.mjs";
+import { addSampleWorkspace } from "./seed-workspace.mjs";
 
-export async function seed(pool, { password, accountsFile } = {}) {
+export async function seed(pool, { password, accountsFile, includeWorkspace = false } = {}) {
   return transaction(pool, async (client) => {
     await client.query("SELECT pg_advisory_xact_lock(712047)");
     if (Number((await client.query("SELECT count(*) FROM users")).rows[0].count)) return null;
@@ -182,6 +183,7 @@ export async function seed(pool, { password, accountsFile } = {}) {
         JSON.stringify({ initialized: true }),
       ],
     );
+    if (includeWorkspace) await addSampleWorkspace(client, accounts);
     const credentials = accounts.map((a) => ({
       email: a.email,
       role: a.role,

@@ -14,7 +14,10 @@ if (command === "local" || command === "migrate") {
 }
 if (command === "local" || command === "seed") {
   await migrate(pool);
-  const result = await seed(pool, { accountsFile: resolve(".runtime/demo-accounts.json") });
+  const result = await seed(pool, {
+    accountsFile: resolve(".runtime/demo-accounts.json"),
+    includeWorkspace: true,
+  });
   console.log(
     result
       ? "Demo accounts created. Credentials: .runtime/demo-accounts.json"

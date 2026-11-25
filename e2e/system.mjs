@@ -187,7 +187,7 @@ try {
   const ticketId = (await userRow.locator("td").first().locator("p").first().innerText()).trim();
   await expect(
     userRow.getByRole("button", { name: "Xác nhận hoàn thành", exact: true }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
   assert.equal(
     await requester.getByRole("columnheader", { name: "Tiến độ", exact: true }).count(),
     0,
@@ -395,9 +395,7 @@ try {
   });
   await complete.getByRole("button", { name: "Xác nhận hoàn thành", exact: true }).click();
   await acknowledge(requester, "Đã xác nhận hoàn thành");
-  await expect(
-    userRow.getByRole("button", { name: "Đã xác nhận hoàn thành", exact: true }),
-  ).toBeDisabled();
+  await expect(userRow.getByRole("button", { name: "Đánh giá", exact: true })).toBeVisible();
   await requester.goto(origin + "/end-user/feedback");
   const ticketChoice = requester.getByLabel("Chọn Ticket cần đánh giá", { exact: true });
   await expect(ticketChoice).toHaveValue("");

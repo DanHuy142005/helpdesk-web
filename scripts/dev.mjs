@@ -50,7 +50,10 @@ try {
   pool = createPool(process.env.DATABASE_URL || db.url);
   await migrate(pool);
   if (db) {
-    const created = await seed(pool, { accountsFile: resolve(".runtime/demo-accounts.json") });
+    const created = await seed(pool, {
+      accountsFile: resolve(".runtime/demo-accounts.json"),
+      includeWorkspace: true,
+    });
     if (created) console.log("Tai khoan demo: .runtime/demo-accounts.json");
   }
   const localOrigins = [`http://127.0.0.1:${port}`, `http://localhost:${port}`];

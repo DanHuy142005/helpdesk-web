@@ -57,7 +57,7 @@ const actionSchema = z
     assetId: z.string().min(1).max(60).nullable().optional(),
   })
   .strict();
-const slaMinutes = { "Khẩn cấp": 15, Cao: 30, "Trung bình": 120, Thấp: 1440 };
+export const slaMinutes = { "Khẩn cấp": 15, Cao: 30, "Trung bình": 120, Thấp: 1440 };
 
 export const ticketSelect = `SELECT t.*, r.name requester, r.email, d.name department, a.name assignee, a.role assignee_role,
   assigner.name assigned_by_name,

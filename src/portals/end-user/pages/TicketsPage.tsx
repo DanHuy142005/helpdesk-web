@@ -14,56 +14,66 @@ import {
   TicketFeedbackAction,
   SectionCard,
   StatusBadge,
-  UserAvatar,
   type Column,
 } from "@/shared";
 import { type MyTicket } from "../data";
+
+function TicketStatus({ ticket }: { ticket: MyTicket }) {
+  return (
+    <div className="space-y-1">
+      <StatusBadge status={ticket.status} />
+      {ticket.assignee !== "—" && (
+        <p className="break-words text-xs text-muted-foreground">{ticket.assignee}</p>
+      )}
+      {ticket.closed_automatically && <p className="text-xs text-muted-foreground">Tự động đóng</p>}
+    </div>
+  );
+}
 
 const columns: Column<MyTicket>[] = [
   {
     key: "id",
     header: "Ticket",
+    className: "px-2 sm:px-4",
     cell: (t) => (
       <div className="min-w-0">
         <p className="text-xs font-bold text-primary">{t.id}</p>
-        <p className="max-w-[280px] truncate font-semibold">{t.title}</p>
+        <p className="line-clamp-2 break-words font-semibold" title={t.title}>
+          {t.title}
+        </p>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          <span>{t.category}</span>
+          <PriorityBadge priority={t.priority} />
+          <span className="whitespace-nowrap" title="Ngày tạo">
+            {t.createdAt}
+          </span>
+        </div>
+        <div className="mt-2 @min-[43rem]:hidden">
+          <TicketStatus ticket={t} />
+        </div>
       </div>
     ),
   },
   {
-    key: "category",
-    header: "Loại",
-    cell: (t) => <span className="text-muted-foreground">{t.category}</span>,
-  },
-  { key: "priority", header: "Mức độ", cell: (t) => <PriorityBadge priority={t.priority} /> },
-  { key: "status", header: "Trạng thái", cell: (t) => <StatusBadge status={t.status} /> },
-  {
-    key: "assignee",
-    header: "Người xử lý",
-    cell: (t) => (
-      <div className="flex items-center gap-2">
-        <UserAvatar name={t.assignee} />
-        <span className="whitespace-nowrap">{t.assignee}</span>
-      </div>
-    ),
+    key: "status",
+    header: "Trạng thái",
+    className: "hidden w-[28%] @min-[43rem]:table-cell",
+    cell: (ticket) => <TicketStatus ticket={ticket} />,
   },
   {
-    key: "created",
-    header: "Ngày tạo",
-    cell: (t) => <span className="whitespace-nowrap text-muted-foreground">{t.createdAt}</span>,
-  },
-  {
-    key: "completion",
-    header: "Xác nhận hoàn thành",
-    align: "right",
-    cell: (ticket) =>
-      ticket.status === "Đã thu hồi" ? "—" : <TicketCompletionButton ticket={ticket} />,
-  },
-  {
-    key: "feedback",
-    header: "Đánh giá",
+    key: "actions",
+    header: "Thao tác / Đánh giá",
     align: "center",
-    cell: (ticket) => <TicketFeedbackAction ticket={ticket} />,
+    className: "w-28 px-2 @min-[43rem]:w-44 @min-[43rem]:px-4",
+    cell: (ticket) =>
+      ticket.status === "Đã giải quyết" ? (
+        <TicketCompletionButton
+          ticket={ticket}
+          className="h-auto min-h-8 max-w-full whitespace-normal px-2 py-1.5"
+        />
+      ) : ticket.status === "Đã đóng" ? (
+        <TicketFeedbackAction ticket={ticket} />
+      ) : null,
   },
 ];
 
@@ -97,10 +107,11 @@ export function EndUserTicketsPage() {
           </Button>
         }
       />
-      <SectionCard>
+      <SectionCard className="p-3 sm:p-5" bodyClassName="@container">
         <DataTable
           onRowClick={(t) => actions.openTicket(t.id)}
           columns={columns}
+          tableClassName="min-w-0 table-fixed"
           rows={rows}
           getRowKey={(t) => t.id}
           searchText={(t) => `${t.id} ${t.title} ${t.category}`}

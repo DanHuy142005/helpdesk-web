@@ -165,7 +165,13 @@ export function ResolveTicketButton({ ticket }: { ticket: ApiTicket }) {
   );
 }
 
-export function TicketCompletionButton({ ticket }: { ticket: ApiTicket }) {
+export function TicketCompletionButton({
+  ticket,
+  className,
+}: {
+  ticket: ApiTicket;
+  className?: string;
+}) {
   const [open, setOpen] = useState(false),
     [pending, setPending] = useState(false);
   const write = useWrite(),
@@ -176,6 +182,7 @@ export function TicketCompletionButton({ ticket }: { ticket: ApiTicket }) {
         type="button"
         size="sm"
         variant="brand"
+        className={className}
         disabled={ticket.status !== "Đã giải quyết" || pending}
         onClick={(event) => {
           event.stopPropagation();
