@@ -1,6 +1,6 @@
 import multer from "multer";
 import { randomUUID } from "node:crypto";
-import { assert, audit } from "./security.mjs";
+import { assert } from "./security.mjs";
 
 export const upload = multer({
   storage: multer.memoryStorage(),
@@ -33,7 +33,13 @@ export async function saveAttachments(client, user, entity, id, files) {
       .slice(0, 200);
     const attachmentId = randomUUID();
     await client.query(
-      "INSERT INTO attachments(id,ticket_id,document_id,author_id,name,mime,data,size) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
+      `WITH saved AS (
+         INSERT INTO attachments(id,ticket_id,document_id,author_id,name,mime,data,size)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id
+       )
+       INSERT INTO audit_log(id,actor_id,action,entity,entity_id,details)
+       SELECT gen_random_uuid(),$4,'upload',$9,$10,jsonb_build_object('attachmentId',id,'size',$8)
+       FROM saved`,
       [
         attachmentId,
         entity === "tickets" ? id : null,
@@ -43,9 +49,10 @@ export async function saveAttachments(client, user, entity, id, files) {
         file.mimetype,
         file.buffer,
         file.buffer.length,
+        entity,
+        id,
       ],
     );
-    await audit(client, user.id, "upload", entity, id, { attachmentId, size: file.buffer.length });
     result.push({ id: attachmentId, name, mime: file.mimetype, size: file.buffer.length });
   }
   return result;

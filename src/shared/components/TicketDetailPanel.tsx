@@ -16,7 +16,7 @@ export function TicketDetailPanel({ id }: { id: string }) {
     write = useWrite();
   const query = useQuery({
     queryKey: ["ticket", id],
-    queryFn: () => api<TicketDetail>("/tickets/" + encodeURIComponent(id)),
+    queryFn: ({ signal }) => api<TicketDetail>("/tickets/" + encodeURIComponent(id), { signal }),
     refetchInterval: 3000,
     retry: false,
   });

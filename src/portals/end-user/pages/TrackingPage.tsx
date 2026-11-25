@@ -27,7 +27,7 @@ export function EndUserTrackingPage() {
   const chosen = myTickets.find((ticket) => ticket.id === selected) || myTickets[0];
   const query = useQuery({
     queryKey: ["ticket", chosen?.id],
-    queryFn: () => api<TicketDetail>("/tickets/" + chosen!.id),
+    queryFn: ({ signal }) => api<TicketDetail>("/tickets/" + chosen!.id, { signal }),
     enabled: !!chosen,
     refetchInterval: 3000,
   });

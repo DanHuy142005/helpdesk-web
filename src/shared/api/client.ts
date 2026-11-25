@@ -68,9 +68,10 @@ export function useWorkspace() {
   const auth = useAuth();
   return useQuery({
     queryKey: ["workspace", auth.data?.user.id],
-    queryFn: () => api<Workspace>("/workspace"),
+    queryFn: ({ signal }) => api<Workspace>("/workspace", { signal }),
     enabled: !!auth.data,
     refetchInterval: 3000,
+    staleTime: 3000,
     retry: 1,
   });
 }
@@ -82,9 +83,14 @@ export function useWrite() {
         method,
         body: body instanceof FormData ? body : JSON.stringify(body),
       });
-      await client.invalidateQueries({ queryKey: ["workspace"] });
-      await client.invalidateQueries({ queryKey: ["ticket"] });
-      await client.invalidateQueries({ queryKey: ["document"] });
+      // A successful write should not keep the form waiting for dashboard and detail reads.
+      const [, resource, id] = path.split("/");
+      if (resource !== "auth") void client.invalidateQueries({ queryKey: ["workspace"] });
+      if (id && (resource === "tickets" || resource === "documents")) {
+        void client.invalidateQueries({
+          queryKey: [resource === "tickets" ? "ticket" : "document", decodeURIComponent(id)],
+        });
+      }
       return result;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Không lưu được dữ liệu.");

@@ -22,7 +22,7 @@ export function IncidentWorkspace() {
   const chosen = list.find((ticket) => ticket.id === selected) || list[0];
   const query = useQuery({
     queryKey: ["ticket", chosen?.id],
-    queryFn: () => api<TicketDetail>(`/tickets/${chosen!.id}`),
+    queryFn: ({ signal }) => api<TicketDetail>(`/tickets/${chosen!.id}`, { signal }),
     enabled: !!chosen,
     refetchInterval: 3000,
     retry: false,

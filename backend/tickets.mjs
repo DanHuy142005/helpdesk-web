@@ -78,11 +78,7 @@ async function event(
   previous = null,
   previousAssigneeId = null,
 ) {
-  await client.query(
-    `INSERT INTO ticket_events(id,ticket_id,actor_id,action,note,from_status,to_status,assignee_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
-    [randomUUID(), ticket.id, actor, action, note, previous, ticket.status, ticket.assignee_id],
-  );
-  await audit(client, actor, action, "tickets", ticket.id, {
+  const details = {
     from: previous,
     to: ticket.status,
     assigneeId: ticket.assignee_id,
@@ -96,32 +92,43 @@ async function event(
     requestedCategory: ticket.requested_category,
     requestedAssetId: ticket.requested_asset_id,
     classifiedBy: ticket.classified_by,
-  });
-  const users = new Set(
-    [ticket.requester_id, ticket.assignee_id].filter((id) => id && id !== actor),
+  };
+  await client.query(
+    `WITH history AS (
+       INSERT INTO ticket_events(id,ticket_id,actor_id,action,note,from_status,to_status,assignee_id)
+       VALUES(gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7)
+     ), audit_entry AS (
+       INSERT INTO audit_log(id,actor_id,action,entity,entity_id,details)
+       VALUES(gen_random_uuid(),$2,$3,'tickets',$1,$8)
+     ), recipients AS (
+       SELECT $9::uuid AS id
+       UNION SELECT $7::uuid
+       UNION SELECT id FROM users WHERE $10::boolean AND role='admin' AND active
+     )
+     INSERT INTO notifications(id,user_id,message,ticket_id)
+     SELECT gen_random_uuid(),id,$11,$1 FROM recipients WHERE id IS NOT NULL AND id IS DISTINCT FROM $2`,
+    [
+      ticket.id,
+      actor,
+      action,
+      note,
+      previous,
+      ticket.status,
+      ticket.assignee_id,
+      JSON.stringify(details),
+      ticket.requester_id,
+      ["create", "reopen", "return-to-helpdesk", "withdraw"].includes(action),
+      `${ticket.id}: ${ticket.title} — ${action === "assign" ? "Admin đã phân công người xử lý" : action === "return-to-helpdesk" ? "Chờ Admin phân công Helpdesk" : ticket.status}`,
+    ],
   );
-  if (["create", "reopen", "return-to-helpdesk", "withdraw"].includes(action)) {
-    const { rows } = await client.query("SELECT id FROM users WHERE role='admin' AND active");
-    rows.forEach((u) => {
-      if (u.id !== actor) users.add(u.id);
-    });
-  }
-  for (const user of users)
-    await client.query(
-      "INSERT INTO notifications(id,user_id,message,ticket_id) VALUES($1,$2,$3,$4)",
-      [
-        randomUUID(),
-        user,
-        `${ticket.id}: ${ticket.title} — ${action === "assign" ? "Admin đã phân công người xử lý" : action === "return-to-helpdesk" ? "Chờ Admin phân công Helpdesk" : ticket.status}`,
-        ticket.id,
-      ],
-    );
 }
 
 export function ticketRouter(pool) {
   const router = Router();
   const messageSelect = `SELECT m.id,m.body,m.created_at,m.sender_id author_id,u.name author,u.role author_role
     FROM ticket_messages m JOIN users u ON u.id=m.sender_id WHERE m.ticket_id=$1 ORDER BY m.created_at,m.id`;
+  const messageList = `(SELECT coalesce(json_agg(m ORDER BY m.created_at,m.id),'[]')
+    FROM (${messageSelect}) m)`;
   router.get("/", async (req, res) => {
     const scope = ticketScope(req.user);
     const values = [...scope.values];
@@ -197,34 +204,36 @@ export function ticketRouter(pool) {
     res.status(201).json(ticket);
   });
   router.get("/:id", async (req, res) => {
-    const result = await transaction(pool, async (client) => {
-      const ticket = await getTicket(client, req.user, req.params.id, true);
-      const canChat = canReadConversation(req.user, ticket);
-      const full = await client.query(`${ticketSelect} WHERE t.id=$1`, [ticket.id]);
-      const comments = await client.query(
-        `SELECT c.id,c.body,c.internal,c.created_at,u.name author,u.id author_id FROM ticket_comments c JOIN users u ON u.id=c.author_id
-        WHERE c.ticket_id=$1 AND c.internal AND $2::boolean ORDER BY c.created_at,c.id`,
-        [ticket.id, canChat && req.user.role === "technician"],
-      );
-      const messages = canChat ? await client.query(messageSelect, [ticket.id]) : { rows: [] };
-      const events = await client.query(
-        `SELECT e.*,COALESCE(u.name,'Hệ thống') actor,a.name assignee FROM ticket_events e LEFT JOIN users u ON u.id=e.actor_id LEFT JOIN users a ON a.id=e.assignee_id WHERE e.ticket_id=$1 ORDER BY e.created_at`,
-        [ticket.id],
-      );
-      const attachments = await client.query(
-        "SELECT id,name,mime,size FROM attachments WHERE ticket_id=$1 ORDER BY created_at",
-        [ticket.id],
-      );
-      return {
-        ...full.rows[0],
-        comments: comments.rows,
-        messages: messages.rows,
-        can_chat: canChat,
-        events: events.rows,
-        attachments: attachments.rows,
-      };
-    });
-    res.json(result);
+    const scope = ticketScope(req.user, "t", 2);
+    // The ticket scope limits non-admin readers to the participants in this conversation.
+    const canChat = scope.values.length > 0;
+    const comments =
+      canChat && req.user.role === "technician"
+        ? `(SELECT coalesce(json_agg(c ORDER BY c.created_at,c.id),'[]') FROM (
+             SELECT c.id,c.body,c.internal,c.created_at,u.name author,u.id author_id
+             FROM ticket_comments c JOIN users u ON u.id=c.author_id
+             WHERE c.ticket_id=$1 AND c.internal
+           ) c)`
+        : "'[]'::json";
+    const { rows } = await pool.query(
+      `WITH detail AS (${ticketSelect} WHERE t.id=$1 AND ${scope.sql})
+       SELECT detail.*,
+         ${comments} AS comments,
+         ${canChat ? messageList : "'[]'::json"} AS messages,
+         ${canChat ? "true" : "false"} AS can_chat,
+         (SELECT coalesce(json_agg(e ORDER BY e.created_at),'[]') FROM (
+            SELECT e.*,coalesce(u.name,'Hệ thống') actor,a.name assignee
+            FROM ticket_events e LEFT JOIN users u ON u.id=e.actor_id
+            LEFT JOIN users a ON a.id=e.assignee_id WHERE e.ticket_id=$1
+          ) e) AS events,
+         (SELECT coalesce(json_agg(json_build_object('id',f.id,'name',f.name,'mime',f.mime,'size',f.size)
+                                   ORDER BY f.created_at),'[]')
+          FROM attachments f WHERE f.ticket_id=$1) AS attachments
+       FROM detail`,
+      [req.params.id, ...scope.values],
+    );
+    assert(rows[0], 404, "Không tìm thấy Ticket hoặc bạn không có quyền truy cập.");
+    res.json(rows[0]);
   });
   router.delete("/:id", async (req, res) => {
     assert(req.user.role === "admin", 403, "Chỉ Admin được xóa Ticket đã đóng.");
@@ -515,16 +524,16 @@ export function ticketRouter(pool) {
   router.post("/:id/return-to-helpdesk", performAction("return-to-helpdesk"));
 
   router.get("/:id/messages", async (req, res) => {
-    const messages = await transaction(pool, async (client) => {
-      const ticket = await getTicket(client, req.user, req.params.id, true);
-      assert(
-        canReadConversation(req.user, ticket),
-        403,
-        "Bạn không có quyền đọc hội thoại Ticket này.",
-      );
-      return (await client.query(messageSelect, [ticket.id])).rows;
-    });
-    res.json(messages);
+    const scope = ticketScope(req.user, "t", 2);
+    const canChat = scope.values.length > 0;
+    const { rows } = await pool.query(
+      `SELECT ${canChat ? messageList : "'[]'::json"} AS messages
+       FROM tickets t WHERE t.id=$1 AND ${scope.sql}`,
+      [req.params.id, ...scope.values],
+    );
+    assert(rows[0], 404, "Không tìm thấy Ticket hoặc bạn không có quyền truy cập.");
+    assert(canChat, 403, "Bạn không có quyền đọc hội thoại Ticket này.");
+    res.json(rows[0].messages);
   });
   const sendMessage =
     (legacy = false) =>
@@ -534,7 +543,7 @@ export function ticketRouter(pool) {
         .strict()
         .parse(req.body);
       assert(legacy || !input.internal, 400, "Tin nhắn hội thoại không phải ghi chú nội bộ.");
-      await transaction(pool, async (client) => {
+      const message = await transaction(pool, async (client) => {
         const ticket = await getTicket(client, req.user, req.params.id, true);
         assert(
           canReadConversation(req.user, ticket),
@@ -552,40 +561,38 @@ export function ticketRouter(pool) {
           403,
           "Không được tạo ghi chú nội bộ.",
         );
-        const messageId = randomUUID();
-        if (input.internal) {
+        const insert = input.internal
+          ? `INSERT INTO ticket_comments(id,ticket_id,author_id,body,internal)
+             VALUES(gen_random_uuid(),$1,$2,$3,true) RETURNING id,body,created_at,author_id`
+          : `INSERT INTO ticket_messages(id,ticket_id,sender_id,body)
+             VALUES(gen_random_uuid(),$1,$2,$3) RETURNING id,body,created_at,sender_id AS author_id`;
+        // Record the audit and notification with the message. The audit has no conversation content.
+        const saved = (
           await client.query(
-            "INSERT INTO ticket_comments(id,ticket_id,author_id,body,internal) VALUES($1,$2,$3,$4,true)",
-            [messageId, ticket.id, req.user.id, input.body],
-          );
-        } else {
-          await client.query(
-            "INSERT INTO ticket_messages(id,ticket_id,sender_id,body) VALUES($1,$2,$3,$4)",
-            [messageId, ticket.id, req.user.id, input.body],
-          );
-        }
-        // Audit identifies the message without exposing private conversation content.
-        await audit(
-          client,
-          req.user.id,
-          input.internal ? "comment" : "message",
-          "tickets",
-          ticket.id,
-          {
-            messageId,
-            internal: input.internal,
-          },
-        );
-        if (!input.internal) {
-          for (const id of new Set(
-            [ticket.requester_id, ticket.assignee_id].filter((id) => id && id !== req.user.id),
-          )) {
-            await client.query(
-              "INSERT INTO notifications(id,user_id,message,ticket_id) VALUES($1,$2,$3,$4)",
-              [randomUUID(), id, `${ticket.id}: có phản hồi mới`, ticket.id],
-            );
-          }
-        }
+            `WITH saved AS (${insert}), audit_entry AS (
+               INSERT INTO audit_log(id,actor_id,action,entity,entity_id,details)
+               SELECT gen_random_uuid(),$2,$4,'tickets',$1,
+                 jsonb_build_object('messageId',id,'internal',$5::boolean)
+               FROM saved
+             ), notified AS (
+               INSERT INTO notifications(id,user_id,message,ticket_id)
+               SELECT gen_random_uuid(),id,$6,$1
+               FROM (SELECT $7::uuid AS id UNION SELECT $8::uuid) recipients
+               WHERE NOT $5::boolean AND id IS NOT NULL AND id<>$2
+             )
+             SELECT * FROM saved`,
+            [
+              ticket.id,
+              req.user.id,
+              input.body,
+              input.internal ? "comment" : "message",
+              input.internal,
+              `${ticket.id}: có phản hồi mới`,
+              ticket.requester_id,
+              ticket.assignee_id,
+            ],
+          )
+        ).rows[0];
         if (!input.internal && req.user.role === "end-user" && ticket.status === "Chờ phản hồi") {
           const updated = (
             await client.query(
@@ -603,8 +610,9 @@ export function ticketRouter(pool) {
             ticket.assignee_id,
           );
         }
+        return { ...saved, author: req.user.name, author_role: req.user.role };
       });
-      res.status(201).json({ ok: true });
+      res.status(201).json(input.internal ? { ok: true } : { ok: true, message });
     };
   router.post("/:id/messages", sendMessage());
   router.post("/:id/comments", sendMessage(true));
